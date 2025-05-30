@@ -9,7 +9,7 @@ from IPython.display import clear_output
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
-from data.spring import get_dataset
+from data.pendulum import get_dataset, hamiltonian_fn
 
 from flax import nnx
 import optax
@@ -17,8 +17,45 @@ import orbax.checkpoint as ocp
 
 seed = 42
 # %%
+from scipy.special import ellipk, ellipe, ellipkinc, ellipeinc
+
+# Define 𝜅
+def compute_kappa(E, F):
+    return np.sqrt(0.5 * (1 + E/F))
+
+# Define η
+def compute_eta(kappa, phi):
+    return np.arcsin(np.sin(0.5 * phi) / kappa)
+
+# Define the transformation into action (J)
+def J_transform(G, F, E):
+    kappa = compute_kappa(E, F)
+    R = np.sqrt(F/G)
+    
+    if kappa < 1:
+        J = R * 8/np.pi * ellipe(kappa**2) - (1 - kappa**2) * ellipk(kappa**2)
+    
+    else:
+        J = R * 8/np.pi * 1/2 * kappa * ellipe(kappa * (-2))
+
+    return J
+
+# Define the transformation into angle (phi)
+def phi_transform(theta, E, F):
+    kappa = compute_kappa(E, F)
+    eta = compute_eta(kappa, theta)
+    eta_real = np.real(eta)
+
+    if kappa < 1:
+        phi = np.pi/2 * (ellipk(kappa ** 2)) ** (-1) * ellipkinc(eta_real, kappa**2)
+    
+    else:
+        phi = np.pi/2 * 2 * ellipk(kappa ** (-2)) ** (-1) * ellipkinc(0.5 * theta, kappa ** (-2))
+
+    return phi
+# %%
 np.random.seed(seed)
-data = get_dataset(samples=1024, seed=seed, noise_std=0.01)
+data = get_dataset(samples=1024, seed=seed, noise_std=0.005)
 
 N = 1
 # %%
@@ -27,9 +64,9 @@ train_x = data["x"]
 x = (train_x[:, :, 0] + 1j * train_x[:, :, 1])[..., None]
 train_J = np.abs(x)
 train_phi = np.angle(x)
-train_phi = np.gradient(train_phi, axis=-2)
-phi_median = np.median(phi, axis=-2)
-np.putmask(train_phi, np.abs(train_phi) > 2.85, phi_median.repeat(30, axis=-1)[..., None])
+# train_phi = np.gradient(train_phi, axis=-2)
+# phi_median = np.median(train_phi, axis=-2)
+# np.putmask(train_phi, np.abs(train_phi) > 2.85, phi_median.repeat(30, axis=-1)[..., None])
 # test_x = data['test_x']
 
 train_dxdt = data["dx"]
@@ -39,11 +76,9 @@ train_steps = 12000
 eval_every = 200
 batch_size = 64
 
-train_ds = tf.data.Dataset.from_tensor_slices((train_x, train_J, train_phi))
+train_ds = tf.data.Dataset.from_tensor_slices((train_phi, train_J))
 train_ds = train_ds.repeat().shuffle(256)
 train_ds = train_ds.batch(batch_size, drop_remainder=True).take(train_steps).prefetch(1)
-
-
 # %%
 class Block(nnx.Module):
     def __init__(self, din, dout, *, initializer, activation, rngs):
@@ -84,9 +119,9 @@ orthogonal_initializer = nnx.initializers.orthogonal()
 class MotionConstant(nnx.Module):
     def __init__(self, N: int, rngs: nnx.Rngs):
         self.mlp = MLP(
-            [2 * N, 10, 15, 5, N],
+            [2, 10, 15, 5, 1],
             initializer=orthogonal_initializer,
-            activation=nnx.tanh,
+            activation=nnx.gelu,
             rngs=rngs,
         )
 
@@ -107,9 +142,9 @@ class GeneratingFunction(nnx.Module):
 
     def __init__(self, N: int, rngs: nnx.Rngs):
         self.mlp = MLP(
-            [2 * N, 10, 15, 5, N],
+            [2, 10, 15, 5, 1],
             initializer=orthogonal_initializer,
-            activation=nnx.tanh,
+            activation=nnx.gelu,
             rngs=rngs,
         )
         # self.linear1 = nnx.Linear(2*N, 10, rngs=rngs, kernel_init=orthogonal_initializer)
@@ -123,8 +158,6 @@ class GeneratingFunction(nnx.Module):
         # x = nnx.tanh(self.linear3(x))
         # x = self.linear4(x)
         return self.mlp(x)
-
-
 # %%
 @nnx.jit
 def mc_train_step(
@@ -137,25 +170,25 @@ def mc_train_step(
     def loss_fn(
         motion_constant: MotionConstant, generating_function: GeneratingFunction, batch
     ):
-        x, J_true, phi_true = batch
-        q = x[..., :N]
-        p = x[..., N:]
+        q, p = batch
 
         J = motion_constant(jnp.concat((q, p), axis=-1))
 
-        loss = jnp.abs(J - J_true).sum() + jnp.abs(jnp.gradient(J, axis=-2)).sum()
+        # loss = jnp.abs(J - J_true).sum() + jnp.abs(jnp.gradient(J, axis=-2)).sum()
 
         # dF2 = nnx.grad(lambda x: generating_function(x).sum())(jnp.concat((q, J), axis=-1))
         # dF2dq = dF2[..., :N]
         # dF2dJ = dF2[..., N:]
 
-        # const_loss = jnp.abs(jnp.gradient(J, axis=-2)).sum()
-        # # const_loss = jnp.abs(J - J.mean(axis=-2)[..., None, :]).sum()
+        const_loss = jnp.pow(jnp.gradient(J, axis=-2), 2).sum()
+        # const_loss = jnp.pow(J - J.mean(axis=-2)[..., None, :], 2).sum()
+        spread_loss = -jnp.std(jnp.mean(J, axis=-2), axis=0).sum()
         # # gf_loss = jnp.abs(jnp.gradient(jnp.gradient(dF2dJ, axis=-2), axis=-2)).sum() + jnp.abs(dF2dq - p).sum()
         # gf_loss = jnp.abs(dF2dq - p).sum()
 
         # loss = const_loss + gf_loss
         # loss = gf_loss
+        loss = const_loss + spread_loss * 0.3
 
         return loss, J
 
@@ -176,27 +209,26 @@ def gf_train_step(
     def loss_fn(
         generating_function: GeneratingFunction, motion_constant: MotionConstant, batch
     ):
-        x, J_true, phi_true = batch
-        q = x[..., :N]
-        p = x[..., N:]
+        q, p = batch
 
-        # J = motion_constant(jnp.concat((q, p), axis=-1))
+        J = motion_constant(jnp.concat((q, p), axis=-1))
 
         dF2 = nnx.grad(lambda x: generating_function(x).sum())(
-            jnp.concat((q, J_true), axis=-1)
+            jnp.concat((q, J), axis=-1)
         )
         dF2dq = dF2[..., :N]
         dF2dJ = dF2[..., N:]
 
-        phi_est =  jnp.gradient(dF2dJ, axis=-2)
-        # phi_median = jnp.median(phi_est, axis=-2)
-        # phi_est = jnp.place(phi_est, jnp.abs(phi_est) > 2.85, phi_median.repeat(30, axis=-1)[..., None], inplace=False)
-
-        phi_loss = jnp.abs(phi_est - phi_true).sum()
-        # loss = jnp.abs(jnp.gradient(jnp.gradient(dF2dJ, axis=-2), axis=-2)).sum() + jnp.abs(dF2dq - p).sum()
+        # fix to get rid of jumps in the derivative caused by angle modulo
+        # phi_est = dF2dJ
+        # omega_median = jnp.median(phi_est, axis=-2)
+        # omega_est = jnp.place(phi_est, jnp.abs(phi_est) > 2.85, phi_median.repeat(30, axis=-1)[..., None], inplace=False)
+        
+        # phi_loss = jnp.abs(jnp.gradient(jnp.gradient(dF2dJ, axis=-2), axis=-2)).sum()
+        # phi_loss = 
         p_loss = jnp.abs(dF2dq - p).sum()
 
-        loss = phi_loss #+ p_loss
+        loss = p_loss
 
         return loss, dF2dq
 
@@ -225,7 +257,7 @@ gf_metric_history = {"train_loss": []}
 
 for step, batch in enumerate(train_ds.as_numpy_iterator()):
     mc_train_step(mc_model, gf_model, mc_opt, mc_metrics, batch)
-    gf_train_step(gf_model, mc_model, gf_opt, gf_metrics, batch)
+    # gf_train_step(gf_model, mc_model, gf_opt, gf_metrics, batch)
 
     if step > 0 and (step % eval_every == 0 or step == train_steps - 1):
         for metric, value in mc_metrics.compute().items():
@@ -251,34 +283,38 @@ for step, batch in enumerate(train_ds.as_numpy_iterator()):
 # %%
 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
 for i in range(5):
-    x = data["x"][i][:, 0] + 1j * data["x"][i][:, 1]
-    J = mc_model(data["x"][i])
+    true_J = jnp.array(list(map(lambda H: J_transform(2, 3, H), hamiltonian_fn(data["x"][i].T)[0])))
+    true_phi = jnp.array(phi_transform(data["x"][i].T[0], hamiltonian_fn(data["x"][i].T).mean(), 3))
+
+    J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
     ax1.plot(J)
-    ax1.plot(jnp.abs(x), c="grey", linestyle="--")
+    ax1.plot(true_J, c="grey", linestyle="--")
     ax1.set_title("J")
 
     dF2 = nnx.grad(lambda x: gf_model(x).sum())(
-        jnp.concat((data["x"][i][..., :N], J), axis=-1)
+        jnp.concat((train_phi[i], J), axis=-1)
     )
     dF2dq = dF2[..., :N]
     dF2dJ = dF2[..., N:]
 
     ax2.plot(dF2dq)
-    ax2.plot(data["x"][i][..., :N], c="grey", linestyle="--")
+    ax2.plot(train_phi[i], c="grey", linestyle="--")
     ax2.set_title("q")
 
-    ax3.plot(dF2dJ)
+    # ax3.plot(dF2dJ)
+    ax3.plot(true_phi, c="grey", linestyle="--")
     ax3.set_title(r"$\phi$")
 # %%
-true_J = []
-pred_J = []
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+
 for i in range(100):
     x = data["x"][i][:, 0] + 1j * data["x"][i][:, 1]
-    plt.plot(jnp.real(x), jnp.imag(x))
+    ax1.plot(jnp.real(x), jnp.imag(x))
 
     # print(jnp.abs(x).mean(), mc_model(data['x'][i]).mean())
-    true_J.append(jnp.abs(x).mean())
-    pred_J.append(mc_model(data["x"][i]).mean())
+    true_J = jnp.array(list(map(lambda H: J_transform(2, 3, H), hamiltonian_fn(data["x"][i].T)[0])))
+    pred_J = mc_model(data["x"][i])
+    ax2.errorbar(true_J.mean(), pred_J.mean(), xerr=true_J.std(), yerr= pred_J.std(), c='tab:blue', marker='.')
+ax2.set_xlabel("True J")
+ax2.set_ylabel("Pred J")
 # %%
-plt.scatter(true_J, pred_J)
-    # %%
