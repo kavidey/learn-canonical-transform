@@ -1,4 +1,5 @@
 # %%
+from pathlib import Path
 import jax
 import jax.numpy as jnp
 import jax.random as jnr
@@ -16,6 +17,7 @@ import optax
 import orbax.checkpoint as ocp
 
 seed = 42
+data_dir = Path('datasets')
 # %%
 from scipy.special import ellipk, ellipe, ellipkinc, ellipeinc
 
@@ -55,10 +57,11 @@ def phi_transform(theta, E, F):
     return phi
 # %%
 np.random.seed(seed)
-data = get_dataset(samples=1024, seed=seed, noise_std=0.005)
-
+# data = get_dataset(samples=1024, seed=seed, noise_std=0.005)
+# np.save(data_dir / "pendulum.npy", data)
 N = 1
 # %%
+data = np.load(data_dir / "pendulum.npy", allow_pickle=True).flat[0]
 train_x = data["x"]
 # train_x = np.concat((train_x, (train_x[:,:,0] ** 2 + train_x[:,:,1] ** 2)[..., None]), axis=-1)
 x = (train_x[:, :, 0] + 1j * train_x[:, :, 1])[..., None]
@@ -142,10 +145,10 @@ class GeneratingFunction(nnx.Module):
         self.epsilon=epsilon
 
     def __call__(self, q, J):
-        return jnp.sum(q * J, axis=-1)[..., None] + self.epsilon * self.mlp(jnp.concat((q, J), axis=-1))
+        return jnp.sum(q * J, axis=-1)[..., None]# + self.epsilon * self.mlp(jnp.concat((q, J), axis=-1))
     
     def time_derivative(self, q, J):
-        dF2dq, dF2dJ = nnx.grad(lambda q, J: self(q, J).sum(), argnums=[0,1])(q, J)
+        dF2dJ, dF2dq = nnx.grad(lambda q, J: self(q, J).sum(), argnums=[0,1])(q, J)
 
         return dF2dq, dF2dJ
 # %%
@@ -202,20 +205,20 @@ def gf_train_step(
 
         dF2dq, dF2dJ = generating_function.time_derivative(q, J)
         
-        omega = jnp.gradient(dF2dJ, axis=-2)
+        # omega = jnp.gradient(dF2dJ, axis=-2)
         # phi_loss = jnp.abs(jnp.gradient(omega, axis=-2)).sum()
-        phi_loss = jnp.pow(omega - omega.mean(axis=-2)[..., None, :], 2).sum()
-        omega_spread_loss = -jnp.std(omega, axis=0).sum()
+        # phi_loss = jnp.pow(omega - omega.mean(axis=-2)[..., None, :], 2).sum()
+        # omega_spread_loss = -jnp.std(omega, axis=0).sum()
         
-        p_loss = jnp.abs(dF2dq - p).sum()
+        p_loss = jnp.abs(p - dF2dq).sum()
         # p_loss = jnp.abs(jnp.sin(dF2dq) - jnp.sin(p)).sum() + jnp.abs(jnp.cos(dF2dq) - jnp.cos(p)).sum()
-        q_spread_loss = -jnp.std(dF2dq, axis=-2).sum()
+        # q_spread_loss = -jnp.std(dF2dq, axis=-2).sum()
 
         # loss = p_loss + q_spread_loss + omega_spread_loss * 0.02 + phi_loss*10
         # loss = p_loss + q_spread_loss# + phi_loss + omega_spread_loss * 0.02
         loss = p_loss
 
-        return loss, (p_loss, q_spread_loss, phi_loss, omega_spread_loss)
+        return loss, (p_loss)#, q_spread_loss, phi_loss, omega_spread_loss)
 
     grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
     (loss, meta), grads = grad_fn(model, motion_constant, batch)
@@ -225,7 +228,7 @@ def gf_train_step(
     return meta
 
 # %%
-# mc_model = MotionConstant(1, rngs=nnx.Rngs(0))
+mc_model = MotionConstant(1, rngs=nnx.Rngs(0))
 gf_model = GeneratingFunction(1, rngs=nnx.Rngs(1), epsilon=0.05)
 
 learning_rate = 0.005
@@ -286,7 +289,7 @@ for i in range(5):
     ax1.plot(true_J, c="grey", linestyle="--")
     ax1.set_title("J")
 
-    dF2dq, dF2dJ = generating_function.time_derivative(train_phi[i], J)
+    dF2dq, dF2dJ = gf_model.time_derivative(train_phi[i], J)
 
     ax2.plot(dF2dq)
     ax2.plot(train_phi[i], c="grey", linestyle="--")
