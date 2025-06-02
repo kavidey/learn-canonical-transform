@@ -355,4 +355,106 @@ for i in range(100):
     ax2.errorbar(true_J.mean(), pred_J.mean(), xerr=true_J.std(), yerr= pred_J.std(), c='tab:blue', marker='.')
 ax2.set_xlabel("True J")
 ax2.set_ylabel("Pred J")
+# %% [markdown]
+# ### Find equations for motion constant predictor and generating function with sympy
+# %%
+default_pysr_params = dict(
+	populations=40,
+	procs=4,
+	model_selection="best",
+    output_directory='pysr_output'
+)
+# %%
+mc_in = np.concat((train_phi, train_J), axis=-1)
+mc_in = mc_in.reshape(-1, mc_in.shape[-1])
+mc_out = [mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1)) for i in range(len(train_phi))]
+mc_out = np.array(mc_out)[..., 0].flatten()
+
+gf_in = np.concat((train_phi.reshape(-1, train_phi.shape[-1]), mc_out[..., None]), axis=-1)
+gf_out = [gf_model(train_phi[i], mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))) for i in range(len(train_phi))]
+gf_out = np.array(gf_out)[..., 0].flatten()
+
+selection = np.random.randint(0, mc_in.shape[0], 5_000)
+mc_in = mc_in[selection]
+mc_out = mc_out[selection]
+gf_in = gf_in[selection]
+gf_out = gf_out[selection]
+# %%
+mc_model_pysr = PySRRegressor(
+	niterations=30,
+	binary_operators=["+", "*", "-", "/"],
+	unary_operators=["cos", "exp", "sin", "cot"],
+    denoise=True,
+    batching=True,
+	**default_pysr_params
+)
+
+mc_model_pysr.fit(mc_in, mc_out)
+mc_model_pysr.sympy()
+# %%
+gf_model_pysr = PySRRegressor(
+	niterations=30,
+	binary_operators=["+", "*", "-", "/"],
+	unary_operators=["cos", "exp", "sin", "cot"],
+    denoise=True,
+    batching=True,
+	**default_pysr_params
+)
+
+gf_model_pysr.fit(gf_in, gf_out)
+gf_model_pysr.sympy()
+# %%
+fig, (ax1) = plt.subplots(1, 1, figsize=(15, 5))
+
+for i in range(100):
+    x = data["x"][i][:, 0] + 1j * data["x"][i][:, 1]
+
+    # print(jnp.abs(x).mean(), mc_model(data['x'][i]).mean())
+    true_J = jnp.array(list(map(lambda H: J_transform(G, F, H), hamiltonian_fn(data["x"][i].T)[0])))
+    pred_J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
+    pred_J_pysr = mc_model_pysr.predict(jnp.concat((train_phi[i], train_J[i]), axis=-1))
+    ax1.errorbar(true_J.mean(), pred_J.mean(), xerr=true_J.std(), yerr= pred_J.std(), c='tab:blue', marker='.')
+    ax1.errorbar(true_J.mean(), pred_J_pysr.mean(), xerr=true_J.std(), yerr= pred_J_pysr.std(), c='tab:orange', marker='.')
+ax1.set_xlabel("True J")
+ax1.set_ylabel("Pred J")
+# %%
+fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(15, 5))
+for i in range(5):
+    H = hamiltonian_fn(data["x"][i].T)[0]
+    true_J = jnp.array(list(map(lambda H: J_transform(G, F, H), H)))
+    # true_phi = jnp.array(phi_transform(data["x"][i].T[0], H.mean(), 3))
+    kappa = compute_kappa(H.mean(), 3)
+    true_omega = jnp.pi * kappa/ellipk(1/kappa)
+
+    ax1.plot(true_J, c="grey", linestyle="--", label="True J")
+    J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
+    J_pysr = mc_model_pysr.predict(jnp.concat((train_phi[i], train_J[i]), axis=-1))
+    ax1.plot(J, c='grey', label="Pred $J$")
+    ax1.plot(J_pysr, c='black', label="PySR Pred $J$")
+    ax1.set_title("True vs Pred $J$")
+    ax1.set_xlabel(r"$J$")
+    ax1.set_ylabel(r"$t$")
+
+    dF2dq, dF2dJ = gf_model.time_derivative(train_phi[i], J)
+
+    ax2.plot(dF2dq, label="Pred $p_n$")
+    ax2.plot(train_J[i], c="grey", linestyle="--", label="True $p$")
+    # ax2.plot(J, c="grey", linestyle="--", label="True $p$")
+    ax2.set_title("True vs Pred $p$")
+
+    ax3.plot(dF2dJ, label=r'$\phi$')
+    ax3.plot(train_phi[i], c="grey", linestyle="--", label='$p$')
+    # ax3.plot(jnp.sin(train_phi[i]), label='sin')
+    # ax3.plot(jnp.gradient(jnp.sin(train_phi[i]), axis=-2), label='d/dt sin')
+    # ax3.plot(jnp.cos(train_phi[i]), label='cos')
+    ax3.set_title(r"$Q =\phi$ and $q$")
+
+    ax4.plot(grad_ignore_jump(dF2dJ[:, 0]), label=r'$\phi$')
+    ax4.plot(grad_ignore_jump(train_phi[i][:, 0]), c="grey", linestyle="--", label='$p$')
+    ax4.set_title(r"$\dot Q = \dot \phi$ and $\dot q$")
+
+# remove duplicate legend entries
+ax1.legend(*[*zip(*{l:h for h,l in zip(*ax1.get_legend_handles_labels())}.items())][::-1])
+ax2.legend(*[*zip(*{l:h for h,l in zip(*ax2.get_legend_handles_labels())}.items())][::-1])
+ax3.legend(*[*zip(*{l:h for h,l in zip(*ax3.get_legend_handles_labels())}.items())][::-1])
 # %%
