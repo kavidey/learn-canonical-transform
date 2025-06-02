@@ -72,7 +72,7 @@ train_phi = np.angle(x)
 train_dxdt = data["dx"]
 # test_dxdt = data['test_dx']
 
-train_steps = 12000
+train_steps = 10000
 eval_every = 200
 batch_size = 64
 
@@ -125,39 +125,29 @@ class MotionConstant(nnx.Module):
             rngs=rngs,
         )
 
-    #     self.linear1 = nnx.Linear(2*N, 10, rngs=rngs, kernel_init=orthogonal_initializer)
-    #     self.linear2 = nnx.Linear(10, 15, rngs=rngs, kernel_init=orthogonal_initializer)
-    #     self.linear3 = nnx.Linear(15, 5, rngs=rngs, kernel_init=orthogonal_initializer)
-    #     self.linear4 = nnx.Linear(5, 1, rngs=rngs, kernel_init=orthogonal_initializer)
-
     def __call__(self, x):
-        # x = nnx.tanh(self.linear1(x))
-        # x = nnx.tanh(self.linear2(x))
-        # x = nnx.tanh(self.linear3(x))
-        # x = self.linear4(x)
         return self.mlp(x)
 
 
 class GeneratingFunction(nnx.Module):
 
-    def __init__(self, N: int, rngs: nnx.Rngs):
+    def __init__(self, N: int, rngs: nnx.Rngs, epsilon=1.0):
         self.mlp = MLP(
-            [2, 10, 15, 5, 1],
+            [2*N, 10, 15, 5, 1],
             initializer=orthogonal_initializer,
             activation=nnx.gelu,
             rngs=rngs,
         )
-        # self.linear1 = nnx.Linear(2*N, 10, rngs=rngs, kernel_init=orthogonal_initializer)
-        # self.linear2 = nnx.Linear(10, 15, rngs=rngs, kernel_init=orthogonal_initializer)
-        # self.linear3 = nnx.Linear(15, 5, rngs=rngs, kernel_init=orthogonal_initializer)
-        # self.linear4 = nnx.Linear(5, 1, rngs=rngs, kernel_init=orthogonal_initializer)
+        self.N = N
+        self.epsilon=epsilon
 
-    def __call__(self, x):
-        # x = nnx.tanh(self.linear1(x))
-        # x = nnx.tanh(self.linear2(x))
-        # x = nnx.tanh(self.linear3(x))
-        # x = self.linear4(x)
-        return self.mlp(x)
+    def __call__(self, q, J):
+        return jnp.sum(q * J, axis=-1)[..., None] + self.epsilon * self.mlp(jnp.concat((q, J), axis=-1))
+    
+    def time_derivative(self, q, J):
+        dF2dq, dF2dJ = nnx.grad(lambda q, J: self(q, J).sum(), argnums=[0,1])(q, J)
+
+        return dF2dq, dF2dJ
 # %%
 @nnx.jit
 def mc_train_step(
@@ -174,20 +164,17 @@ def mc_train_step(
 
         J = motion_constant(jnp.concat((q, p), axis=-1))
 
-        # loss = jnp.abs(J - J_true).sum() + jnp.abs(jnp.gradient(J, axis=-2)).sum()
-
-        # dF2 = nnx.grad(lambda x: generating_function(x).sum())(jnp.concat((q, J), axis=-1))
-        # dF2dq = dF2[..., :N]
-        # dF2dJ = dF2[..., N:]
-
         const_loss = jnp.pow(jnp.gradient(J, axis=-2), 2).sum()
         # const_loss = jnp.pow(J - J.mean(axis=-2)[..., None, :], 2).sum()
         spread_loss = -jnp.std(jnp.mean(J, axis=-2), axis=0).sum()
-        # # gf_loss = jnp.abs(jnp.gradient(jnp.gradient(dF2dJ, axis=-2), axis=-2)).sum() + jnp.abs(dF2dq - p).sum()
+        
+        # dF2 = nnx.grad(lambda x: generating_function(x).sum())(jnp.concat((q, J), axis=-1))
+        # dF2dq = dF2[..., :N]
+        # dF2dJ = dF2[..., N:]
+        
+        # gf_loss = jnp.abs(jnp.gradient(jnp.gradient(dF2dJ, axis=-2), axis=-2)).sum() + jnp.abs(dF2dq - p).sum()
         # gf_loss = jnp.abs(dF2dq - p).sum()
 
-        # loss = const_loss + gf_loss
-        # loss = gf_loss
         loss = const_loss + spread_loss * 0.3
 
         return loss, J
@@ -213,34 +200,33 @@ def gf_train_step(
 
         J = motion_constant(jnp.concat((q, p), axis=-1))
 
-        dF2 = nnx.grad(lambda x: generating_function(x).sum())(
-            jnp.concat((q, J), axis=-1)
-        )
-        dF2dq = dF2[..., :N]
-        dF2dJ = dF2[..., N:]
-
-        # fix to get rid of jumps in the derivative caused by angle modulo
-        # phi_est = dF2dJ
-        # omega_median = jnp.median(phi_est, axis=-2)
-        # omega_est = jnp.place(phi_est, jnp.abs(phi_est) > 2.85, phi_median.repeat(30, axis=-1)[..., None], inplace=False)
+        dF2dq, dF2dJ = generating_function.time_derivative(q, J)
         
-        # phi_loss = jnp.abs(jnp.gradient(jnp.gradient(dF2dJ, axis=-2), axis=-2)).sum()
-        # phi_loss = 
+        omega = jnp.gradient(dF2dJ, axis=-2)
+        # phi_loss = jnp.abs(jnp.gradient(omega, axis=-2)).sum()
+        phi_loss = jnp.pow(omega - omega.mean(axis=-2)[..., None, :], 2).sum()
+        omega_spread_loss = -jnp.std(omega, axis=0).sum()
+        
         p_loss = jnp.abs(dF2dq - p).sum()
+        # p_loss = jnp.abs(jnp.sin(dF2dq) - jnp.sin(p)).sum() + jnp.abs(jnp.cos(dF2dq) - jnp.cos(p)).sum()
+        q_spread_loss = -jnp.std(dF2dq, axis=-2).sum()
 
+        # loss = p_loss + q_spread_loss + omega_spread_loss * 0.02 + phi_loss*10
+        # loss = p_loss + q_spread_loss# + phi_loss + omega_spread_loss * 0.02
         loss = p_loss
 
-        return loss, dF2dq
+        return loss, (p_loss, q_spread_loss, phi_loss, omega_spread_loss)
 
     grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
-    (loss, dF2dq), grads = grad_fn(model, motion_constant, batch)
+    (loss, meta), grads = grad_fn(model, motion_constant, batch)
     metrics.update(loss=loss)
     optimizer.update(grads)
 
+    return meta
 
 # %%
-mc_model = MotionConstant(1, rngs=nnx.Rngs(0))
-gf_model = GeneratingFunction(1, rngs=nnx.Rngs(1))
+# mc_model = MotionConstant(1, rngs=nnx.Rngs(0))
+gf_model = GeneratingFunction(1, rngs=nnx.Rngs(1), epsilon=0.05)
 
 learning_rate = 0.005
 momentum = 0.9
@@ -252,12 +238,16 @@ mc_metrics = nnx.MultiMetric(loss=nnx.metrics.Average("loss"))
 
 gf_metrics = nnx.MultiMetric(loss=nnx.metrics.Average("loss"))
 # %%
+train_gf_after = 5000
+
+step_list = []
 mc_metric_history = {"train_loss": []}
 gf_metric_history = {"train_loss": []}
 
 for step, batch in enumerate(train_ds.as_numpy_iterator()):
     mc_train_step(mc_model, gf_model, mc_opt, mc_metrics, batch)
-    # gf_train_step(gf_model, mc_model, gf_opt, gf_metrics, batch)
+    if step >= train_gf_after:
+        gf_train_step(gf_model, mc_model, gf_opt, gf_metrics, batch)
 
     if step > 0 and (step % eval_every == 0 or step == train_steps - 1):
         for metric, value in mc_metrics.compute().items():
@@ -268,14 +258,16 @@ for step, batch in enumerate(train_ds.as_numpy_iterator()):
             gf_metric_history[f"train_{metric}"].append(value)
         gf_metrics.reset()
 
+        step_list.append(step)
+
         clear_output(wait=True)
         # Plot loss and accuracy in subplots
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
         ax1.set_title("MC Loss")
         ax2.set_title("GF Loss")
         # ax2.set_title('Accuracy')
-        ax1.plot(mc_metric_history["train_loss"], label="mc loss")
-        ax2.plot(gf_metric_history["train_loss"], label="gf loss")
+        ax1.plot(step_list, mc_metric_history["train_loss"], label="mc loss")
+        ax2.plot(step_list, gf_metric_history["train_loss"], label="gf loss")
         # ax2.plot(metrics_history[f'{dataset}_accuracy'], label=f'{dataset}_accuracy')
         # ax1.legend()
         # ax2.legend()
@@ -283,26 +275,28 @@ for step, batch in enumerate(train_ds.as_numpy_iterator()):
 # %%
 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
 for i in range(5):
-    true_J = jnp.array(list(map(lambda H: J_transform(2, 3, H), hamiltonian_fn(data["x"][i].T)[0])))
-    true_phi = jnp.array(phi_transform(data["x"][i].T[0], hamiltonian_fn(data["x"][i].T).mean(), 3))
+    H = hamiltonian_fn(data["x"][i].T)[0]
+    true_J = jnp.array(list(map(lambda H: J_transform(2, 3, H), H)))
+    # true_phi = jnp.array(phi_transform(data["x"][i].T[0], H.mean(), 3))
+    kappa = compute_kappa(H.mean(), 3)
+    true_omega = jnp.pi * kappa/ellipk(1/kappa)
 
     J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
     ax1.plot(J)
     ax1.plot(true_J, c="grey", linestyle="--")
     ax1.set_title("J")
 
-    dF2 = nnx.grad(lambda x: gf_model(x).sum())(
-        jnp.concat((train_phi[i], J), axis=-1)
-    )
-    dF2dq = dF2[..., :N]
-    dF2dJ = dF2[..., N:]
+    dF2dq, dF2dJ = generating_function.time_derivative(train_phi[i], J)
 
     ax2.plot(dF2dq)
     ax2.plot(train_phi[i], c="grey", linestyle="--")
     ax2.set_title("q")
 
-    # ax3.plot(dF2dJ)
-    ax3.plot(true_phi, c="grey", linestyle="--")
+    ax3.plot(dF2dJ)
+    # ax3.plot(jnp.gradient(dF2dJ.T[0]))
+    # ax3.plot(true_phi)
+    # ax3.plot(jnp.gradient(true_phi), c="grey", linestyle="--")
+    # ax3.axhline(true_omega, c="grey", linestyle="--")
     ax3.set_title(r"$\phi$")
 # %%
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
@@ -313,7 +307,7 @@ for i in range(100):
 
     # print(jnp.abs(x).mean(), mc_model(data['x'][i]).mean())
     true_J = jnp.array(list(map(lambda H: J_transform(2, 3, H), hamiltonian_fn(data["x"][i].T)[0])))
-    pred_J = mc_model(data["x"][i])
+    pred_J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
     ax2.errorbar(true_J.mean(), pred_J.mean(), xerr=true_J.std(), yerr= pred_J.std(), c='tab:blue', marker='.')
 ax2.set_xlabel("True J")
 ax2.set_ylabel("Pred J")
