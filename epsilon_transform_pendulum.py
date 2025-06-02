@@ -145,10 +145,10 @@ class GeneratingFunction(nnx.Module):
         self.epsilon=epsilon
 
     def __call__(self, q, J):
-        return jnp.sum(q * J, axis=-1)[..., None]# + self.epsilon * self.mlp(jnp.concat((q, J), axis=-1))
+        return jnp.sum(q * J, axis=-1)[..., None] + self.epsilon * self.mlp(jnp.concat((q, J), axis=-1))
     
     def time_derivative(self, q, J):
-        dF2dJ, dF2dq = nnx.grad(lambda q, J: self(q, J).sum(), argnums=[0,1])(q, J)
+        dF2dq, dF2dJ = nnx.grad(lambda q, J: self(q, J).sum(), argnums=[0,1])(q, J)
 
         return dF2dq, dF2dJ
 # %%
@@ -205,20 +205,19 @@ def gf_train_step(
 
         dF2dq, dF2dJ = generating_function.time_derivative(q, J)
         
-        # omega = jnp.gradient(dF2dJ, axis=-2)
+        omega = jnp.gradient(dF2dJ, axis=-2)
+        omega_loss = ((omega - jnp.cos(dF2dJ)) ** 2).mean()
         # phi_loss = jnp.abs(jnp.gradient(omega, axis=-2)).sum()
         # phi_loss = jnp.pow(omega - omega.mean(axis=-2)[..., None, :], 2).sum()
         # omega_spread_loss = -jnp.std(omega, axis=0).sum()
         
-        p_loss = jnp.abs(p - dF2dq).sum()
+        p_loss = ((dF2dq - p) ** 2).mean()
         # p_loss = jnp.abs(jnp.sin(dF2dq) - jnp.sin(p)).sum() + jnp.abs(jnp.cos(dF2dq) - jnp.cos(p)).sum()
         # q_spread_loss = -jnp.std(dF2dq, axis=-2).sum()
 
-        # loss = p_loss + q_spread_loss + omega_spread_loss * 0.02 + phi_loss*10
-        # loss = p_loss + q_spread_loss# + phi_loss + omega_spread_loss * 0.02
-        loss = p_loss
+        loss = p_loss + omega_loss * 0.1
 
-        return loss, (p_loss)#, q_spread_loss, phi_loss, omega_spread_loss)
+        return loss, (p_loss, omega_loss)
 
     grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
     (loss, meta), grads = grad_fn(model, motion_constant, batch)
@@ -248,9 +247,9 @@ mc_metric_history = {"train_loss": []}
 gf_metric_history = {"train_loss": []}
 
 for step, batch in enumerate(train_ds.as_numpy_iterator()):
-    mc_train_step(mc_model, gf_model, mc_opt, mc_metrics, batch)
+    mc_meta = mc_train_step(mc_model, gf_model, mc_opt, mc_metrics, batch)
     if step >= train_gf_after:
-        gf_train_step(gf_model, mc_model, gf_opt, gf_metrics, batch)
+        gf_meta = gf_train_step(gf_model, mc_model, gf_opt, gf_metrics, batch)
 
     if step > 0 and (step % eval_every == 0 or step == train_steps - 1):
         for metric, value in mc_metrics.compute().items():
@@ -284,23 +283,31 @@ for i in range(5):
     kappa = compute_kappa(H.mean(), 3)
     true_omega = jnp.pi * kappa/ellipk(1/kappa)
 
+    ax1.plot(true_J, c="grey", linestyle="--", label="True J")
     J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
-    ax1.plot(J)
-    ax1.plot(true_J, c="grey", linestyle="--")
-    ax1.set_title("J")
+    ax1.plot(J, label="Pred $J$")
+    ax1.set_title("True vs Pred $J$")
+    ax1.set_xlabel(r"$J$")
+    ax1.set_ylabel(r"$t$")
 
     dF2dq, dF2dJ = gf_model.time_derivative(train_phi[i], J)
 
-    ax2.plot(dF2dq)
-    ax2.plot(train_phi[i], c="grey", linestyle="--")
-    ax2.set_title("q")
+    ax2.plot(dF2dq, label="Pred $p_n$")
+    ax2.plot(train_J[i], c="grey", linestyle="--", label="True $p$")
+    # ax2.plot(J, c="grey", linestyle="--", label="True $p$")
+    ax2.set_title("True vs Pred $p$")
 
-    ax3.plot(dF2dJ)
+    ax3.plot(dF2dJ, label=r'$\phi$')
     # ax3.plot(jnp.gradient(dF2dJ.T[0]))
     # ax3.plot(true_phi)
     # ax3.plot(jnp.gradient(true_phi), c="grey", linestyle="--")
     # ax3.axhline(true_omega, c="grey", linestyle="--")
-    ax3.set_title(r"$\phi$")
+    ax3.plot(train_phi[i], c="grey", linestyle="--", label='$p$')
+    ax3.set_title(r"$Q =\phi$ and $q$")
+
+ax1.legend(*[*zip(*{l:h for h,l in zip(*ax1.get_legend_handles_labels())}.items())][::-1])
+ax2.legend(*[*zip(*{l:h for h,l in zip(*ax2.get_legend_handles_labels())}.items())][::-1])
+ax3.legend(*[*zip(*{l:h for h,l in zip(*ax3.get_legend_handles_labels())}.items())][::-1])
 # %%
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
 
