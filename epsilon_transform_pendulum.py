@@ -1,4 +1,8 @@
+# %% [markdown]
+# ### Imports
 # %%
+from pysr import PySRRegressor
+
 from pathlib import Path
 import jax
 import jax.numpy as jnp
@@ -18,6 +22,8 @@ import orbax.checkpoint as ocp
 
 seed = 42
 data_dir = Path('datasets')
+# %% [markdown]
+# ### Setup Dataset
 # %%
 from scipy.special import ellipk, ellipe, ellipkinc, ellipeinc
 
@@ -57,6 +63,9 @@ def phi_transform(theta, E, F):
     return phi
 # %%
 np.random.seed(seed)
+F = 3
+G = 2
+omega_0 = np.sqrt(F * G)
 # data = get_dataset(samples=1024, seed=seed, noise_std=0.005)
 # np.save(data_dir / "pendulum.npy", data)
 N = 1
@@ -82,6 +91,8 @@ batch_size = 64
 train_ds = tf.data.Dataset.from_tensor_slices((train_phi, train_J))
 train_ds = train_ds.repeat().shuffle(256)
 train_ds = train_ds.batch(batch_size, drop_remainder=True).take(train_steps).prefetch(1)
+# %% [markdown]
+# ### Initialize Model
 # %%
 class Block(nnx.Module):
     def __init__(self, din, dout, *, initializer, activation, rngs):
@@ -151,6 +162,8 @@ class GeneratingFunction(nnx.Module):
         dF2dq, dF2dJ = nnx.grad(lambda q, J: self(q, J).sum(), argnums=[0,1])(q, J)
 
         return dF2dq, dF2dJ
+# %% [markdown]
+# ### Training Code
 # %%
 @nnx.jit
 def mc_train_step(
@@ -205,8 +218,8 @@ def gf_train_step(
 
         dF2dq, dF2dJ = generating_function.time_derivative(q, J)
         
-        omega = jnp.gradient(dF2dJ, axis=-2)
-        omega_loss = ((omega - jnp.cos(dF2dJ)) ** 2).mean()
+        omega = jnp.gradient(jnp.sin(dF2dJ), axis=-2)
+        omega_loss = ((omega - jnp.cos(dF2dJ) * (-1/(omega_0 * np.pi))) ** 2).mean()
         # phi_loss = jnp.abs(jnp.gradient(omega, axis=-2)).sum()
         # phi_loss = jnp.pow(omega - omega.mean(axis=-2)[..., None, :], 2).sum()
         # omega_spread_loss = -jnp.std(omega, axis=0).sum()
@@ -215,7 +228,7 @@ def gf_train_step(
         # p_loss = jnp.abs(jnp.sin(dF2dq) - jnp.sin(p)).sum() + jnp.abs(jnp.cos(dF2dq) - jnp.cos(p)).sum()
         # q_spread_loss = -jnp.std(dF2dq, axis=-2).sum()
 
-        loss = p_loss + omega_loss * 0.1
+        loss = p_loss #+ omega_loss * 0.1
 
         return loss, (p_loss, omega_loss)
 
@@ -270,15 +283,32 @@ for step, batch in enumerate(train_ds.as_numpy_iterator()):
         # ax2.set_title('Accuracy')
         ax1.plot(step_list, mc_metric_history["train_loss"], label="mc loss")
         ax2.plot(step_list, gf_metric_history["train_loss"], label="gf loss")
+        ax2.set_yscale('log')
         # ax2.plot(metrics_history[f'{dataset}_accuracy'], label=f'{dataset}_accuracy')
         # ax1.legend()
         # ax2.legend()
         plt.show()
+# %% [markdown]
+# ### Training Results
+# Plot 1: True J calculated using elliptic integrals versus predicted J from motion constant model
+#
+# Plot 2: p from SHO transform versus recovered p = dF2/dq from learned generating function
+#
+# Plot 3: q from SHO transform versus phi = Q = dF2/dJ from learned generating function
+#
+# Plot 4: Time derivative of plot 3, jumps due to modulus discontinuity are replaced with the *median* value
 # %%
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+def grad_ignore_jump(x):
+    xp = jnp.gradient(x)
+    median = jnp.median(xp)
+    xp = xp.at[jnp.abs(xp) > jnp.abs(median) * 2].set(median)
+
+    return xp
+
+fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(15, 5))
 for i in range(5):
     H = hamiltonian_fn(data["x"][i].T)[0]
-    true_J = jnp.array(list(map(lambda H: J_transform(2, 3, H), H)))
+    true_J = jnp.array(list(map(lambda H: J_transform(G, F, H), H)))
     # true_phi = jnp.array(phi_transform(data["x"][i].T[0], H.mean(), 3))
     kappa = compute_kappa(H.mean(), 3)
     true_omega = jnp.pi * kappa/ellipk(1/kappa)
@@ -298,13 +328,17 @@ for i in range(5):
     ax2.set_title("True vs Pred $p$")
 
     ax3.plot(dF2dJ, label=r'$\phi$')
-    # ax3.plot(jnp.gradient(dF2dJ.T[0]))
-    # ax3.plot(true_phi)
-    # ax3.plot(jnp.gradient(true_phi), c="grey", linestyle="--")
-    # ax3.axhline(true_omega, c="grey", linestyle="--")
     ax3.plot(train_phi[i], c="grey", linestyle="--", label='$p$')
+    # ax3.plot(jnp.sin(train_phi[i]), label='sin')
+    # ax3.plot(jnp.gradient(jnp.sin(train_phi[i]), axis=-2), label='d/dt sin')
+    # ax3.plot(jnp.cos(train_phi[i]), label='cos')
     ax3.set_title(r"$Q =\phi$ and $q$")
 
+    ax4.plot(grad_ignore_jump(dF2dJ[:, 0]), label=r'$\phi$')
+    ax4.plot(grad_ignore_jump(train_phi[i][:, 0]), c="grey", linestyle="--", label='$p$')
+    ax4.set_title(r"$\dot Q = \dot \phi$ and $\dot q$")
+
+# remove duplicate legend entries
 ax1.legend(*[*zip(*{l:h for h,l in zip(*ax1.get_legend_handles_labels())}.items())][::-1])
 ax2.legend(*[*zip(*{l:h for h,l in zip(*ax2.get_legend_handles_labels())}.items())][::-1])
 ax3.legend(*[*zip(*{l:h for h,l in zip(*ax3.get_legend_handles_labels())}.items())][::-1])
@@ -316,7 +350,7 @@ for i in range(100):
     ax1.plot(jnp.real(x), jnp.imag(x))
 
     # print(jnp.abs(x).mean(), mc_model(data['x'][i]).mean())
-    true_J = jnp.array(list(map(lambda H: J_transform(2, 3, H), hamiltonian_fn(data["x"][i].T)[0])))
+    true_J = jnp.array(list(map(lambda H: J_transform(G, F, H), hamiltonian_fn(data["x"][i].T)[0])))
     pred_J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
     ax2.errorbar(true_J.mean(), pred_J.mean(), xerr=true_J.std(), yerr= pred_J.std(), c='tab:blue', marker='.')
 ax2.set_xlabel("True J")
