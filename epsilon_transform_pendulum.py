@@ -66,6 +66,7 @@ np.random.seed(seed)
 F = 3
 G = 2
 omega_0 = np.sqrt(F * G)
+data_dir.mkdir(parents=True, exist_ok=True)
 # data = get_dataset(samples=1024, seed=seed, noise_std=0.005)
 # np.save(data_dir / "pendulum.npy", data)
 N = 1
@@ -91,6 +92,30 @@ batch_size = 64
 train_ds = tf.data.Dataset.from_tensor_slices((train_phi, train_J))
 train_ds = train_ds.repeat().shuffle(256)
 train_ds = train_ds.batch(batch_size, drop_remainder=True).take(train_steps).prefetch(1)
+# %%
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+for i in range(5):
+    H = hamiltonian_fn(data["x"][i].T)[0]
+    true_J = jnp.array(list(map(lambda H: J_transform(G, F, H), H)))
+    # true_phi = jnp.array(phi_transform(data["x"][i].T[0], H.mean(), 3))
+    kappa = compute_kappa(H.mean(), 3)
+    true_omega = jnp.pi * kappa/ellipk(1/kappa)
+
+    ax1.plot(train_J[i])
+    ax1.plot(true_J, c="grey", linestyle="--")
+    # ax1.set_title("$J$ vs $p$")
+    ax1.set_xlabel(r"$t$")
+    ax1.set_ylabel(r"$J$")
+    
+    ax2.plot(train_phi[i])
+    ax2.set_xlabel(r"$t$")
+    ax2.set_ylabel(r"$\phi$")
+
+    # angle = -np.linspace(0, 1) * true_omega * 1.6 + train_phi[i][0]
+    # ax2.plot(angle, c="grey", linestyle="--")
+# remove duplicate legend entries
+# ax1.legend(*[*zip(*{l:h for h,l in zip(*ax1.get_legend_handles_labels())}.items())][::-1])
+# ax2.legend(*[*zip(*{l:h for h,l in zip(*ax2.get_legend_handles_labels())}.items())][::-1])
 # %% [markdown]
 # ### Initialize Model
 # %%
@@ -228,7 +253,7 @@ def gf_train_step(
         # p_loss = jnp.abs(jnp.sin(dF2dq) - jnp.sin(p)).sum() + jnp.abs(jnp.cos(dF2dq) - jnp.cos(p)).sum()
         # q_spread_loss = -jnp.std(dF2dq, axis=-2).sum()
 
-        loss = p_loss #+ omega_loss * 0.1
+        loss = p_loss + omega_loss * 0.1
 
         return loss, (p_loss, omega_loss)
 
@@ -362,46 +387,66 @@ default_pysr_params = dict(
 	populations=40,
 	procs=4,
 	model_selection="best",
-    output_directory='pysr_output'
+    output_directory='pysr_output',
+    turbo=True,
 )
 # %%
-mc_in = np.concat((train_phi, train_J), axis=-1)
+mc_in = np.concatenate((train_phi, train_J), axis=-1)
 mc_in = mc_in.reshape(-1, mc_in.shape[-1])
 mc_out = [mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1)) for i in range(len(train_phi))]
 mc_out = np.array(mc_out)[..., 0].flatten()
 
-gf_in = np.concat((train_phi.reshape(-1, train_phi.shape[-1]), mc_out[..., None]), axis=-1)
+gf_in = np.concatenate((train_phi.reshape(-1, train_phi.shape[-1]), mc_out[..., None]), axis=-1)
 gf_out = [gf_model(train_phi[i], mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))) for i in range(len(train_phi))]
 gf_out = np.array(gf_out)[..., 0].flatten()
 
-selection = np.random.randint(0, mc_in.shape[0], 5_000)
+selection = np.random.randint(0, mc_in.shape[0], 2_000)
 mc_in = mc_in[selection]
 mc_out = mc_out[selection]
 gf_in = gf_in[selection]
 gf_out = gf_out[selection]
 # %%
 mc_model_pysr = PySRRegressor(
-	niterations=30,
-	binary_operators=["+", "*", "-", "/"],
-	unary_operators=["cos", "exp", "sin", "cot"],
-    denoise=True,
+	binary_operators=["+", "*", "-", "/", "^"],
+	unary_operators=["sin", "exp", "tan", "asin"],
+    constraints={"^": (1, 9)},
+    nested_constraints={
+        "sin": {"sin": 1, "tan": 1, "asin": 0, "^": 0},
+        "tan": {"sin": 1, "tan": 1, "asin": 0, "^": 0},
+        "asin": {"sin": 0, "tan": 0, "asin": 0, "^": 0},
+        "^": {"sin": 1, "tan": 0, "asin": 0}},
+    maxsize=40,
     batching=True,
 	**default_pysr_params
 )
-
+# %%
 mc_model_pysr.fit(mc_in, mc_out)
+# %%
+# mc_model_pysr = mc_model_pysr.from_file(run_directory='pysr_output/20250603_050349_qela2o')
+# %%
+print(mc_model_pysr.latex())
 mc_model_pysr.sympy()
 # %%
 gf_model_pysr = PySRRegressor(
-	niterations=30,
-	binary_operators=["+", "*", "-", "/"],
-	unary_operators=["cos", "exp", "sin", "cot"],
-    denoise=True,
+	binary_operators=["+", "*", "-", "/", "^"],
+	unary_operators=["sin", "exp", "tan", "asin"],
+    constraints={"^": (1, 9)},
+    nested_constraints={
+        "sin": {"sin": 1, "tan": 1, "asin": 0, "^": 0},
+        "tan": {"sin": 1, "tan": 1, "asin": 0, "^": 0},
+        "asin": {"sin": 0, "tan": 0, "asin": 0, "^": 0},
+        "^": {"sin": 1, "tan": 0, "asin": 0}},
+    maxsize=40,
     batching=True,
 	**default_pysr_params
 )
-
+# %%
 gf_model_pysr.fit(gf_in, gf_out)
+# %%
+# gf_model_pysr = gf_model_pysr.from_file(run_directory='pysr_output/20250603_062922_GCxKMN')
+# %%
+gf_model_pysr_jax = lambda x: gf_model_pysr.jax()['callable'](x, gf_model_pysr.jax()['parameters'])
+print(gf_model_pysr.latex())
 gf_model_pysr.sympy()
 # %%
 fig, (ax1) = plt.subplots(1, 1, figsize=(15, 5))
@@ -429,28 +474,32 @@ for i in range(5):
     ax1.plot(true_J, c="grey", linestyle="--", label="True J")
     J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
     J_pysr = mc_model_pysr.predict(jnp.concat((train_phi[i], train_J[i]), axis=-1))
-    ax1.plot(J, c='grey', label="Pred $J$")
-    ax1.plot(J_pysr, c='black', label="PySR Pred $J$")
+    ax1.plot(J, c='black', label="Pred $J$")
+    ax1.plot(J_pysr, label="PySR Pred $J$")
     ax1.set_title("True vs Pred $J$")
     ax1.set_xlabel(r"$J$")
     ax1.set_ylabel(r"$t$")
 
     dF2dq, dF2dJ = gf_model.time_derivative(train_phi[i], J)
+    dF2dq_pysr, dF2dJ_pysr = nnx.grad(lambda q, J: gf_model_pysr_jax(jnp.concat((q, J), axis=-1)).sum(), argnums=[0,1])(train_phi[i], J_pysr[..., None])
 
-    ax2.plot(dF2dq, label="Pred $p_n$")
     ax2.plot(train_J[i], c="grey", linestyle="--", label="True $p$")
+    ax2.plot(dF2dq, c='black', label="Pred $p_n$")
+    ax2.plot(dF2dq_pysr, label="PySR Pred $p_n$")
     # ax2.plot(J, c="grey", linestyle="--", label="True $p$")
     ax2.set_title("True vs Pred $p$")
 
-    ax3.plot(dF2dJ, label=r'$\phi$')
     ax3.plot(train_phi[i], c="grey", linestyle="--", label='$p$')
+    ax3.plot(dF2dJ, c='black', label=r'$\phi$')
+    ax3.plot(dF2dJ_pysr, label=r'$\phi$')
     # ax3.plot(jnp.sin(train_phi[i]), label='sin')
     # ax3.plot(jnp.gradient(jnp.sin(train_phi[i]), axis=-2), label='d/dt sin')
     # ax3.plot(jnp.cos(train_phi[i]), label='cos')
     ax3.set_title(r"$Q =\phi$ and $q$")
 
-    ax4.plot(grad_ignore_jump(dF2dJ[:, 0]), label=r'$\phi$')
     ax4.plot(grad_ignore_jump(train_phi[i][:, 0]), c="grey", linestyle="--", label='$p$')
+    ax4.plot(grad_ignore_jump(dF2dJ[:, 0]), c='black', label=r'$\phi$')
+    ax4.plot(grad_ignore_jump(dF2dJ_pysr[:, 0]), label=r'PySR $\phi$')
     ax4.set_title(r"$\dot Q = \dot \phi$ and $\dot q$")
 
 # remove duplicate legend entries
