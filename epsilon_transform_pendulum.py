@@ -378,6 +378,8 @@ for i in range(100):
     true_J = jnp.array(list(map(lambda H: J_transform(G, F, H), hamiltonian_fn(data["x"][i].T)[0])))
     pred_J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
     ax2.errorbar(true_J.mean(), pred_J.mean(), xerr=true_J.std(), yerr= pred_J.std(), c='tab:blue', marker='.')
+    # ax2.errorbar(true_J.mean(), pred_J.mean()**1.5 * 1.2 + 3.4, xerr=true_J.std(), yerr= pred_J.std(), c='tab:blue', marker='.')
+ax2.plot([3.2,4.2], [3.2,4.2])
 ax2.set_xlabel("True J")
 ax2.set_ylabel("Pred J")
 # %% [markdown]
@@ -506,4 +508,53 @@ for i in range(5):
 ax1.legend(*[*zip(*{l:h for h,l in zip(*ax1.get_legend_handles_labels())}.items())][::-1])
 ax2.legend(*[*zip(*{l:h for h,l in zip(*ax2.get_legend_handles_labels())}.items())][::-1])
 ax3.legend(*[*zip(*{l:h for h,l in zip(*ax3.get_legend_handles_labels())}.items())][::-1])
+# %%
+import plotly.graph_objects as go
+# %%
+npts = 50
+x = np.outer(np.linspace(data["x"].min(), data["x"].max(), npts), np.ones(npts))
+y = x.copy().T
+xp = x.reshape(-1)
+yp = y.reshape(-1)
+
+coord = x + 1j * y
+nx = np.angle(coord)
+ny = np.abs(coord)
+nxp = nx.reshape(-1)
+nyp = ny.reshape(-1)
+# %%
+H = hamiltonian_fn(np.stack((xp, yp)))[0]
+true_J = np.array(list(map(lambda H: J_transform(G, F, H), H)))
+
+J = mc_model(jnp.stack((nxp, nyp)).T)
+J_pysr = mc_model_pysr.predict(jnp.stack((nxp, nyp)).T)
+# %%
+fig = go.Figure(data=[
+    go.Surface(x=nx, y=ny, z=true_J.reshape(x.shape), opacity=0.9),
+    # go.Surface(x=x, y=y, z=J.reshape(x.shape), opacity=0.8)
+    go.Surface(x=nx, y=ny, z=J.reshape(x.shape)**1.5 * 1.2 + 3.4, opacity=0.9)
+])
+fig.update_layout(
+    title={'text': 'J: True vs Learned Tranform'},
+    scene={
+        'xaxis': {'title': {'text': 'q'}},
+        'yaxis': {'title': {'text': 'p'}},
+        'zaxis': {'title': {'text': 'J'}}
+    }
+)
+fig.show()
+# %%
+fig = go.Figure(data=[
+    go.Surface(x=nx, y=ny, z=J.reshape(x.shape), opacity=0.8),
+    go.Surface(x=nx, y=ny, z=J_pysr.reshape(x.shape), opacity=0.8)
+])
+fig.update_layout(
+    title={'text': 'J: Learned vs PySR Tranform'},
+    scene={
+        'xaxis': {'title': {'text': 'q'}},
+        'yaxis': {'title': {'text': 'p'}},
+        'zaxis': {'title': {'text': 'J'}}
+    }
+)
+fig.show()
 # %%
