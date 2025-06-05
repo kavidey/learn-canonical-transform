@@ -25,15 +25,15 @@ data_dir = Path('datasets')
 # %% [markdown]
 # ### Setup Dataset
 # %%
-from scipy.special import ellipk, ellipe, ellipkinc, ellipeinc
+from scipy.special import ellipk, ellipe, ellipkinc
 
 # Define 𝜅
 def compute_kappa(E, F):
-    return np.sqrt(0.5 * (1 + E/F))
+    return np.sqrt((1+E/F)/2)
 
 # Define η
 def compute_eta(kappa, phi):
-    return np.arcsin(np.sin(0.5 * phi) / kappa)
+    return np.real(np.emath.arcsin(np.sin(0.5 * phi) / kappa))
 
 # Define the transformation into action (J)
 def J_transform(G, F, E):
@@ -41,7 +41,7 @@ def J_transform(G, F, E):
     R = np.sqrt(F/G)
     
     if kappa < 1:
-        J = R * 8/np.pi * ellipe(kappa**2) - (1 - kappa**2) * ellipk(kappa**2)
+        J = R * (8/np.pi) * (ellipe(kappa**2) - (1-kappa**2)*ellipk(kappa**2))
     
     else:
         J = R * 8/np.pi * 1/2 * kappa * ellipe(kappa * (-2))
@@ -52,10 +52,9 @@ def J_transform(G, F, E):
 def phi_transform(theta, E, F):
     kappa = compute_kappa(E, F)
     eta = compute_eta(kappa, theta)
-    eta_real = np.real(eta)
 
     if kappa < 1:
-        phi = np.pi/2 * (ellipk(kappa ** 2)) ** (-1) * ellipkinc(eta_real, kappa**2)
+        phi = (np.pi/2) * (1/ellipk(kappa**2) * ellipkinc(eta, kappa**2))
     
     else:
         phi = np.pi/2 * 2 * ellipk(kappa ** (-2)) ** (-1) * ellipkinc(0.5 * theta, kappa ** (-2))
@@ -93,13 +92,33 @@ train_ds = tf.data.Dataset.from_tensor_slices((train_phi, train_J))
 train_ds = train_ds.repeat().shuffle(256)
 train_ds = train_ds.batch(batch_size, drop_remainder=True).take(train_steps).prefetch(1)
 # %%
+fig, (ax1) = plt.subplots(1, 1, figsize=(15, 5))
+
+for i in range(len(train_x)):
+    x = data["x"][i][:, 0] + 1j * data["x"][i][:, 1]
+    ax1.plot(jnp.real(x), jnp.imag(x))
+
+ax1.set_aspect('equal')
+# %%
+def grad_ignore_jump(x):
+    xp = jnp.gradient(x)
+    median = jnp.median(xp)
+    xp = xp.at[jnp.abs(xp) > jnp.abs(median) * 2].set(median)
+
+    return xp
+
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
 for i in range(5):
     H = hamiltonian_fn(data["x"][i].T)[0]
     true_J = jnp.array(list(map(lambda H: J_transform(G, F, H), H)))
-    # true_phi = jnp.array(phi_transform(data["x"][i].T[0], H.mean(), 3))
+    true_phi = jnp.array(phi_transform(data["x"][i].T[0], H.mean(), F))
+    
+    true_phi_dot = grad_ignore_jump(true_phi)
+    true_phi = jnp.cumsum(-jnp.abs(true_phi_dot)) + train_phi[i][0]#+ true_phi[0]
+    
     kappa = compute_kappa(H.mean(), 3)
-    true_omega = jnp.pi * kappa/ellipk(1/kappa)
+    true_omega = (jnp.pi/2) * 1/ellipk(kappa**2) * omega_0
+
 
     ax1.plot(train_J[i])
     ax1.plot(true_J, c="grey", linestyle="--")
@@ -108,11 +127,12 @@ for i in range(5):
     ax1.set_ylabel(r"$J$")
     
     ax2.plot(train_phi[i])
-    ax2.set_xlabel(r"$t$")
-    ax2.set_ylabel(r"$\phi$")
+    # ax2.set_xlabel(r"$t$")
+    # ax2.set_ylabel(r"$\phi$")
+    ax2.plot(true_phi, c="grey", linestyle="--")
 
-    # angle = -np.linspace(0, 1) * true_omega * 1.6 + train_phi[i][0]
-    # ax2.plot(angle, c="grey", linestyle="--")
+    print(jnp.abs(true_phi_dot)[0], true_omega)
+
 # remove duplicate legend entries
 # ax1.legend(*[*zip(*{l:h for h,l in zip(*ax1.get_legend_handles_labels())}.items())][::-1])
 # ax2.legend(*[*zip(*{l:h for h,l in zip(*ax2.get_legend_handles_labels())}.items())][::-1])
@@ -323,13 +343,6 @@ for step, batch in enumerate(train_ds.as_numpy_iterator()):
 #
 # Plot 4: Time derivative of plot 3, jumps due to modulus discontinuity are replaced with the *median* value
 # %%
-def grad_ignore_jump(x):
-    xp = jnp.gradient(x)
-    median = jnp.median(xp)
-    xp = xp.at[jnp.abs(xp) > jnp.abs(median) * 2].set(median)
-
-    return xp
-
 fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(15, 5))
 for i in range(5):
     H = hamiltonian_fn(data["x"][i].T)[0]
@@ -379,7 +392,7 @@ for i in range(100):
     pred_J = mc_model(jnp.concat((train_phi[i], train_J[i]), axis=-1))
     ax2.errorbar(true_J.mean(), pred_J.mean(), xerr=true_J.std(), yerr= pred_J.std(), c='tab:blue', marker='.')
     # ax2.errorbar(true_J.mean(), pred_J.mean()**1.5 * 1.2 + 3.4, xerr=true_J.std(), yerr= pred_J.std(), c='tab:blue', marker='.')
-ax2.plot([3.2,4.2], [3.2,4.2])
+# ax2.plot([3.2,4.2], [3.2,4.2])
 ax2.set_xlabel("True J")
 ax2.set_ylabel("Pred J")
 # %% [markdown]

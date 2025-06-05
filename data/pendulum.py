@@ -9,7 +9,7 @@ solve_ivp = scipy.integrate.solve_ivp
 
 def hamiltonian_fn(coords):
     q, p = np.split(coords,2)
-    H = 3*(1-np.cos(q)) + p**2 # pendulum hamiltonian
+    H = 3*(-np.cos(q)) + p**2 # pendulum hamiltonian
     return H
 
 def dynamics_fn(t, coords):
@@ -25,7 +25,7 @@ def get_trajectory(t_span=[0,3], timescale=15, radius=None, y0=None, noise_std=0
     if y0 is None:
         y0 = np.random.rand(2)*2.-1
     if radius is None:
-        radius = np.random.rand() + 1.3 # sample a range of radii
+        radius = np.random.rand()*2 + 0.3 #+ 1.3 # sample a range of radii
     y0 = y0 / np.sqrt((y0**2).sum()) * radius ## set the appropriate radius
 
     spring_ivp = solve_ivp(fun=dynamics_fn, t_span=t_span, y0=y0, t_eval=t_eval, rtol=1e-10, **kwargs)

@@ -3,3 +3,5 @@ __pycache__
 .DS_Store
 datasets
 pysr_output
+MPCORB.DAT
+proper_catalog24.dat

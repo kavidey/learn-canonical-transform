@@ -44,6 +44,8 @@ for sol in sols:
     eta = np.arcsin(np.sin(0.5 * phi) / kappa)
     J = R * (8/np.pi) * (ellipe(kappa**2) - (1-kappa**2)*ellipk(kappa**2))
     theta = (np.pi/2) * (1/ellipk(kappa**2) * ellipkinc(eta, kappa**2))
+    theta_dot = np.abs(np.gradient(theta))
+    theta = np.cumsum(theta_dot) + theta[0]
     
     plt.subplot(2, 2, 1)
     plt.plot(teval, J)
