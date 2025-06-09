@@ -9,30 +9,22 @@ from ..utils import get_pq, get_x
 class LinearLayer(nnx.Module):
     """Linear symplectic layer."""
 
-    def __init__(self, dim, sublayers, *, rngs: nnx.Rngs):
-        self.dim, self.sublayers = dim, sublayers
+    def __init__(self, dim, *, rngs: nnx.Rngs):
+        self.dim = dim
 
-        key = rngs.params()
-
-        self.S_ = nnx.Param(jnr.uniform(key, (sublayers, dim)) * 0.01)
+        self.S_ = nnx.Param(jnr.uniform(rngs.params(), (2, dim)) * 0.01)
         self.bp = nnx.Param(jnp.zeros(dim))
         self.bq = nnx.Param(jnp.zeros(dim))
 
     def __call__(self, x, h):
-        x = jax.lax.scan(lambda carry, s: self.apply_sublayer(carry, s, h), (x, 0), self.S_)
+        p, q = get_pq(x, self.dim)
+        p = p + (q @ (self.S_[0]+self.S_[0].T))[..., None] * h
+        q = q + (p @ (self.S_[1]+self.S_[1].T))[..., None] * h
+
+        p = p + self.bp * h
+        q = q + self.bq * h
 
         return x
-
-    def apply_sublayer(self, carry, s, h):
-        x, i = carry
-        p, q = get_pq(x, self.dim)
-
-        odd_i = lambda p, q: (p + q @ (s+s.T) * h, q)
-        even_i = lambda p, q: (p, q + p @ (s+s.T) * h)
-
-        p, q = jax.lax.cond(i % 2, odd_i, even_i, p, q)
-
-        return (get_x(p, q), i + 1), None
 
 class ActivationLayer(nnx.Module):
     """Activation symplectic layer."""
@@ -51,23 +43,32 @@ class ActivationLayer(nnx.Module):
         odd_mode = lambda p, q: (p + self.activation(q) * self.a * h, q)
         even_mode = lambda p, q: (p, q + self.activation(p) * self.a * h)
 
-        p, q = jax.lax.cond(self.mode == "odd", odd_mode, even_mode, p, q)
+        p, q = jax.lax.cond(self.mode % 2, odd_mode, even_mode, p, q)
 
         return get_x(p, q)
 
 class LA_Layer(nnx.Module):
     """LA layer """
 
-    def __init__(self, dim, sublayers, mode="odd", *, rngs: nnx.Rngs):
-        self.dim, self.sublayers, self.mode = dim, sublayers, mode
+    def __init__(self, dim, *, rngs: nnx.Rngs):
+        self.dim = dim
 
-        self.linear_layer = LinearLayer(self.dim, self.sublayers, rngs=rngs)
-        self.activation_layer = ActivationLayer(self.dim, self.mode, rngs=rngs)
+        self.linear1 = LinearLayer(self.dim, rngs=rngs)
+        self.linear2 = LinearLayer(self.dim, rngs=rngs)
 
-    def __call__(self, x, h, reverse=False):
-        normal_apply = lambda x: self.activation_layer(self.linear_layer(x, h), h)
-        reverse_apply = lambda x: self.linear_layer(self.activation_layer(x, h), h)
+        self.a = nnx.Param(jnr.uniform(rngs.params(), (2, dim)) * 0.01)
 
-        x = jax.lax.cond(reverse, reverse_apply, normal_apply, x)
+    def __call__(self, x, h):
+        x = self.linear1(x, h)
+
+        p, q = get_pq(x, self.dim)
+        p = p + nnx.tanh(q) * self.a[0] * h
+        x = get_x(p, q)
+
+        x = self.linear1(x, h)
+
+        p, q = get_pq(x, self.dim)
+        q = q + nnx.tanh(p) * self.a[1] * h
+        x = get_x(p, q)
 
         return x

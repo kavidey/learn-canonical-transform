@@ -1,7 +1,7 @@
 # %% [markdown]
 # ### Imports
 # %%
-from pysr import PySRRegressor
+# from pysr import PySRRegressor
 
 from pathlib import Path
 import jax
@@ -19,6 +19,9 @@ from data.pendulum import get_dataset, hamiltonian_fn
 from flax import nnx
 import optax
 import orbax.checkpoint as ocp
+
+from nn.sympnet.p import P_Layer
+from nn.sympnet.la import LA_Layer
 
 seed = 42
 data_dir = Path('datasets')
@@ -176,16 +179,28 @@ orthogonal_initializer = nnx.initializers.orthogonal()
 
 
 class MotionConstant(nnx.Module):
-    def __init__(self, N: int, rngs: nnx.Rngs):
-        self.mlp = MLP(
-            [2, 10, 15, 5, 1],
-            initializer=orthogonal_initializer,
-            activation=nnx.gelu,
-            rngs=rngs,
-        )
+    def __init__(self, N: int, *, rngs: nnx.Rngs, dt=0.1):
+        self.N = N
+        self.dt = dt
+        # self.mlp = MLP(
+        #     [2, 10, 15, 5, 1],
+        #     initializer=orthogonal_initializer,
+        #     activation=nnx.gelu,
+        #     rngs=rngs,
+        # )
+        # self.layers = [P_Layer(N, rngs=rngs)] * 5
+        self.layers = [LA_Layer(N, rngs=rngs) for _ in range(5)]
+
 
     def __call__(self, x):
-        return self.mlp(x)
+        h = self.dt * jnp.ones_like(x[..., -1:])
+        # print(x.shape)
+        # apply_layer = lambda x, layer: (layer(x, h), None)
+        # # return jax.lax.scan(apply_layer, x, self.layers)
+        # return nnx.scan(apply_layer, length=len(self.layers))(x, self.layers)
+        for layer in self.layers:
+            x = layer(x, h)
+        return x[..., :N]
 
 
 class GeneratingFunction(nnx.Module):
