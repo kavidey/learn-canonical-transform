@@ -9,17 +9,19 @@ from ..utils import get_pq, get_x
 class LinearLayer(nnx.Module):
     """Linear symplectic layer."""
 
-    def __init__(self, dim, *, rngs: nnx.Rngs):
+    def __init__(self, dim, sublayers, *, rngs: nnx.Rngs):
         self.dim = dim
+        self.sublayers = sublayers
 
-        self.S_ = nnx.Param(jnr.uniform(rngs.params(), (2, dim)) * 0.01)
+        self.S_ = nnx.Param(jnr.uniform(rngs.params(), (2*sublayers, dim)) * 0.01)
         self.bp = nnx.Param(jnp.zeros(dim))
         self.bq = nnx.Param(jnp.zeros(dim))
 
     def __call__(self, x, h):
         p, q = get_pq(x, self.dim)
-        p = p + (q @ (self.S_[0]+self.S_[0].T))[..., None] * h
-        q = q + (p @ (self.S_[1]+self.S_[1].T))[..., None] * h
+        for i in range(self.sublayers):
+            p = p + (q @ (self.S_[0]+self.S_[2*i+0].T))[..., None] * h
+            q = q + (p @ (self.S_[1]+self.S_[2*i+1].T))[..., None] * h
 
         p = p + self.bp * h
         q = q + self.bq * h
@@ -50,11 +52,11 @@ class ActivationLayer(nnx.Module):
 class LA_Layer(nnx.Module):
     """LA layer """
 
-    def __init__(self, dim, *, rngs: nnx.Rngs):
+    def __init__(self, dim, sublayers, *, rngs: nnx.Rngs):
         self.dim = dim
 
-        self.linear1 = LinearLayer(self.dim, rngs=rngs)
-        self.linear2 = LinearLayer(self.dim, rngs=rngs)
+        self.linear1 = LinearLayer(self.dim, sublayers, rngs=rngs)
+        self.linear2 = LinearLayer(self.dim, sublayers, rngs=rngs)
 
         self.a = nnx.Param(jnr.uniform(rngs.params(), (2, dim)) * 0.01)
 

@@ -106,7 +106,7 @@ ax1.set_aspect('equal')
 def grad_ignore_jump(x):
     xp = jnp.gradient(x)
     median = jnp.median(xp)
-    xp = xp.at[jnp.abs(xp) > jnp.abs(median) * 2].set(median)
+    xp = xp.at[jnp.abs(xp) > jnp.pi * 0.8].set(median)
 
     return xp
 
@@ -189,7 +189,7 @@ class MotionConstant(nnx.Module):
         #     rngs=rngs,
         # )
         # self.layers = [P_Layer(N, rngs=rngs)] * 5
-        self.layers = [LA_Layer(N, rngs=rngs) for _ in range(5)]
+        self.layers = [LA_Layer(N, 3, rngs=rngs) for _ in range(5)]
 
 
     def __call__(self, x):
@@ -348,7 +348,7 @@ for step, batch in enumerate(train_ds.as_numpy_iterator()):
         # ax1.legend()
         # ax2.legend()
         plt.show()
-# %% [markdown]
+  # %% [markdown]
 # ### Training Results
 # Plot 1: True J calculated using elliptic integrals versus predicted J from motion constant model
 #
