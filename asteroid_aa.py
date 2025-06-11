@@ -36,7 +36,7 @@ def load_sim(desn):
     results['X'] = np.sqrt(2*(1-np.sqrt(1-results['e']**2))) * np.exp(1j * results['pomega'])
     results['Y'] = (1-results['e']**2)**(0.25) * np.sin(0.5 * results['inc'] ) * np.exp(1j * results['Omega']) 
 
-    results['G'] = np.sqrt(masses)[..., None].repeat(262690, axis=-1) * np.power(sim.G * sim.particles[0].m * results['a'], 1/4) * results['X']
+    results['G'] = np.sqrt(masses)[..., None].repeat(results['X'].shape[1], axis=-1) * np.power(sim.G * sim.particles[0].m * results['a'], 1/4) * results['X']
 
     return results
 # %%
@@ -170,13 +170,15 @@ with np.printoptions(suppress=True, precision=4):
     print(inc_rotation_matrix_T)
 # %%
 ecc_rotation_matrix_T = ecc_rotation_matrix_T[:4,:4]
-ecc_rotation_matrix_T = ecc_rotation_matrix_T / np.linalg.norm(ecc_rotation_matrix_T, axis=1)[...,None].repeat(4, axis=1)
+# ecc_rotation_matrix_T = ecc_rotation_matrix_T / np.linalg.norm(ecc_rotation_matrix_T, axis=1)[...,None].repeat(4, axis=1)
+normalize_cols = 2 / np.sum(np.abs(ecc_rotation_matrix_T), axis=0)
+ecc_rotation_matrix_T = ecc_rotation_matrix_T * normalize_cols
 print(np.linalg.det(ecc_rotation_matrix_T))
 
 npts = 100_000
 skip_pts = 100
-Phi = (np.linalg.inv(ecc_rotation_matrix_T) @ sim['G'][:4])
-# Phi = (sim['G'].T @ inc_rotation_matrix_T.T).T
+# Phi = (np.linalg.inv(ecc_rotation_matrix_T) @ sim['G'][:4])
+Phi = (inc_rotation_matrix_T.T @ sim['G'])
 
 fig, axs = plt.subplots(2,5,figsize=(15, 5))
 for i in range(4):
