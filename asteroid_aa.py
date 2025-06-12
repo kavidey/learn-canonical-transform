@@ -106,9 +106,9 @@ for i, pl in enumerate(planets):
         inc_rotation_matrix_T_base[i][j] = np.abs(planet_inc_fmft[pl][found_s])
 # %%
 for desn in desns:
-    # sim = load_sim(desn)
-    # asteroid_ecc_fmft = fmft(sim['time'],sim['G'][-1],14)
-    # asteroid_inc_fmft = fmft(sim['time'],sim['Y'][-1],8)
+    sim = load_sim(desn)
+    asteroid_ecc_fmft = fmft(sim['time'],sim['G'][-1],14)
+    asteroid_inc_fmft = fmft(sim['time'],sim['Y'][-1],8)
 
     ecc_rotation_matrix_T = ecc_rotation_matrix_T_base.copy()
     inc_rotation_matrix_T = inc_rotation_matrix_T_base.copy()
@@ -169,19 +169,18 @@ with np.printoptions(suppress=True, precision=4):
     print("inc")
     print(inc_rotation_matrix_T)
 # %%
-ecc_rotation_matrix_T = ecc_rotation_matrix_T[:4,:4]
-# ecc_rotation_matrix_T = ecc_rotation_matrix_T / np.linalg.norm(ecc_rotation_matrix_T, axis=1)[...,None].repeat(4, axis=1)
-normalize_cols = 2 / np.sum(np.abs(ecc_rotation_matrix_T), axis=0)
-ecc_rotation_matrix_T = ecc_rotation_matrix_T * normalize_cols
+ecc_rotation_matrix_T = ecc_rotation_matrix_T / np.linalg.norm(ecc_rotation_matrix_T, axis=0)
 print(np.linalg.det(ecc_rotation_matrix_T))
+
+with np.printoptions(suppress=True, precision=4):
+    print(ecc_rotation_matrix_T)
 
 npts = 100_000
 skip_pts = 100
-# Phi = (np.linalg.inv(ecc_rotation_matrix_T) @ sim['G'][:4])
-Phi = (inc_rotation_matrix_T.T @ sim['G'])
+Phi = (np.linalg.inv(ecc_rotation_matrix_T) @ sim['G'])
 
 fig, axs = plt.subplots(2,5,figsize=(15, 5))
-for i in range(4):
+for i in range(5):
     pts = sim['G'][i][:npts][::skip_pts]
     axs[0][i].plot(np.real(pts), np.imag(pts))
     axs[0][i].set_aspect('equal')

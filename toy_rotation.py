@@ -14,10 +14,13 @@ t = np.linspace(0, 5, 500)
 xi_1 = 3 * np.exp(1j * t * 10) * np.exp(np.random.normal(0, 0.05, t.shape))
 xi_2 = 2 * np.exp(1j * t * 4) * np.exp(np.random.normal(0, 0.05, t.shape))
 
-x_1 = 0.5 * (xi_1 - xi_2)
-x_2 = 0.5 * (xi_1 + xi_2)
-# X = np.stack((xi_1, xi_2))
+c = 0.5 * np.array([[1, -1], [1, 1]])
+
+x_1 = c[0, 0] * xi_1 + c[0, 1] * xi_2
+x_2 = c[1, 0] * xi_1 + c[1, 1] * xi_2
 X = np.stack((x_1, x_2))
+
+c = c * np.array([3, 2])
 
 fig, axs = plt.subplots(1, 2)
 axs[0].plot(np.real(X[0]), np.imag(X[0]))
@@ -52,15 +55,22 @@ for i,x in enumerate(xs):
         if mode_angle[i] != 0 and np.abs(mode_angle[i] - np.angle(fmft_result[x][found_s])) > np.pi/2:
             rotation_matrix[i][j] *= -1
 
+print('true matrix')
+print(c)
+print()
+
 print('un-normalized')
 print(rotation_matrix)
 print()
 
-normalize_cols = 2 / np.sum(np.abs(rotation_matrix), axis=0)
+# normalize_cols = 2 / np.sum(np.abs(rotation_matrix), axis=0)
+normalize_cols = 1/np.linalg.norm(rotation_matrix, axis=0)
 rotation_matrix = rotation_matrix * normalize_cols
 
 print('normalized')
 print(rotation_matrix)
+
+print(np.linalg.det(rotation_matrix))
 # %%
 Y = (X.T @ rotation_matrix.T).T
 fig, axs = plt.subplots(1, 2)
