@@ -333,13 +333,14 @@ for step, batch in enumerate(train_ds.as_numpy_iterator()):
         ax1.plot(step_list, metric_history["train_loss"])
         plt.show()
 # %%
+obj_idx = 4
 test_data = data[:200]
 p, q = get_pq(test_data, model.N)
-x = p[...,-1] * np.exp(1j * q[...,-1])
+x = p[...,obj_idx] * np.exp(1j * q[...,obj_idx])
 # x = p[...,-1] + 1j * q[...,-1]
 
 P, Q = get_pq(model(test_data), model.N)
-X = P[...,-1] * np.exp(1j * Q[...,-1])
+X = P[...,obj_idx] * np.exp(1j * Q[...,obj_idx])
 # X = P[..., -1] + 1j * Q[...,-1]
 
 fig, (axs) = plt.subplots(3, 2, figsize=(15, 15))
@@ -347,9 +348,9 @@ axs[0, 0].plot(jnp.abs(x))
 axs[0, 1].plot(jnp.abs(X))
 
 axs[1, 0].plot(jnp.gradient(jnp.sin(jnp.angle(x))))
-axs[1, 1].plot(jnp.cos(jnp.angle(x)))
-axs[1, 0].plot(jnp.gradient(jnp.sin(jnp.angle(X))))
-axs[1, 1].plot(jnp.cos(jnp.angle(X)))
+axs[1, 0].plot(jnp.cos(jnp.angle(x)) / (1.5 * jnp.pi))
+axs[1, 1].plot(jnp.gradient(jnp.sin(jnp.angle(X))))
+axs[1, 1].plot(jnp.cos(jnp.angle(X)) / (1.5 * jnp.pi))
 
 axs[2, 0].plot(jnp.real(x), jnp.imag(x))
 axs[2, 0].set_aspect('equal')
