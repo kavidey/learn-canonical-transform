@@ -240,7 +240,7 @@ for i in range(5):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
-asteroid_phi = Phi[-1][:100]
+asteroid_phi = Phi[-1][:50]
 plt.plot(np.angle(asteroid_phi), np.abs(asteroid_phi))
 # %%
 angle = np.angle(asteroid_phi)
@@ -249,7 +249,7 @@ plt.plot(sim['time'][:100], jnp.cos(angle) * (1/(1.5 * jnp.pi)))
 # %%
 train_steps = 10000
 eval_every = 200
-batch_size = 128
+batch_size = 1024
 
 data = np.concatenate((np.abs(Phi), np.angle(Phi)), axis=0).T
 # data = np.concatenate((np.real(Phi), np.imag(Phi)), axis=0).T
@@ -285,16 +285,18 @@ def train_step(
         p, q = get_pq(Y, model.N)
 
         # J = jnp.sqrt(p ** 2 + q ** 2)
-        J_loss = (jnp.gradient(p, axis=-2) ** 2).sum()
+        J = p
+        J_loss = (jnp.gradient(J, axis=-2) ** 2).sum()
         # J_loss = ((p - jnp.mean(p)) ** 2).mean()
-        J_magnitude_loss = 1/(jnp.linalg.norm(p, axis=-2) + 0.001).sum()
+        J_magnitude_loss = 1/(jnp.linalg.norm(J, axis=-2) + 0.001).sum()
 
-        omega = jnp.gradient(jnp.sin(q), axis=-2)
-        omega_loss = ((omega - jnp.cos(q) * (1/(1.5 * jnp.pi))) ** 2).sum()
+        # phi = jnp.atan2(p, q)
+        phi = q
+        omega = jnp.gradient(jnp.sin(phi), axis=-2)
+        omega_loss = ((omega - jnp.cos(phi) * (1/(1.5 * jnp.pi))) ** 2).sum()
 
-        # loss = J_loss + omega_loss
+        loss = J_loss + omega_loss
         # loss = J_loss + J_magnitude_loss
-        loss = J_loss# + J_magnitude_loss
 
         return loss, (p, q)
 
@@ -334,7 +336,7 @@ for step, batch in enumerate(train_ds.as_numpy_iterator()):
         plt.show()
 # %%
 obj_idx = 4
-test_data = data[:200]
+test_data = data[:2000]
 p, q = get_pq(test_data, model.N)
 x = p[...,obj_idx] * np.exp(1j * q[...,obj_idx])
 # x = p[...,-1] + 1j * q[...,-1]
@@ -356,4 +358,7 @@ axs[2, 0].plot(jnp.real(x), jnp.imag(x))
 axs[2, 0].set_aspect('equal')
 axs[2, 1].plot(jnp.real(X), jnp.imag(X))
 axs[2, 1].set_aspect('equal')
+# %%
+plt.plot(jnp.angle(x), jnp.abs(x))
+plt.plot(jnp.angle(X), jnp.abs(X))
 # %%
