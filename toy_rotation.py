@@ -79,3 +79,9 @@ axs[0].set_aspect('equal')
 axs[1].plot(np.real(Y[1]), np.imag(Y[1]))
 axs[1].set_aspect('equal')
 # %%
+fig, axs = plt.subplots(2, 1)
+axs[0].plot(t, np.real(X[0]))
+axs[0].plot(t, np.real(X[1]))
+axs[1].plot(t, np.real(Y[0]))
+axs[1].plot(t, np.real(Y[1]))
+# %%

@@ -6,6 +6,7 @@ import jax.random as jnr
 import numpy as np
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
+from scipy.optimize import minimize
 
 import tensorflow as tf
 from flax import nnx
@@ -229,7 +230,8 @@ for i, pl in enumerate(planets + ('Asteroid',)):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
-transformedY = (sim['F'].T @ inc_rotation_matrix_T.T).T
+# transformedY = (sim['F'].T @ inc_rotation_matrix_T.T).T
+transformedY = (np.linalg.inv(inc_rotation_matrix_T) @ sim['F'])
 
 fig, axs = plt.subplots(2,5,figsize=(15, 5))
 for i in range(5):
@@ -240,7 +242,68 @@ for i in range(5):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
-asteroid_phi = Phi[-1][:50]
+def objective(R, G, m):
+    R = R.reshape(5,5)
+    # get a valid rotation matrix from W
+    # U, S, Vh = np.linalg.svd(W)
+    # R = U @ Vh
+
+    rotation_loss = ((np.eye(5) - R @ R.T) ** 2).sum() + (np.linalg.det(R) - 1) ** 2
+
+    Phi = R.T @ G
+
+    J_loss = ((np.abs(Phi) - np.abs(Phi).mean(axis=1)[..., None]) ** 2).sum()
+
+    loss = rotation_loss + J_loss
+    return loss
+# %%
+sol = minimize(objective, ecc_rotation_matrix_T.reshape(-1), args=(sim['G'], masses), options={'gtol': 1e-8, 'disp': True})
+ecc_rotation_matrix_opt_T = sol.x.reshape(5,5)
+
+with np.printoptions(suppress=True, precision=4):
+    print(np.linalg.det(ecc_rotation_matrix_opt_T))
+    print(ecc_rotation_matrix_opt_T @ ecc_rotation_matrix_opt_T.T)
+
+with np.printoptions(suppress=True, precision=4):
+    print("original\n", ecc_rotation_matrix_T)
+    print("optimized\n", ecc_rotation_matrix_opt_T)
+
+Phi = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ sim['G'])
+
+fig, axs = plt.subplots(2,5,figsize=(15, 5))
+for i, pl in enumerate(planets + ('Asteroid',)):
+    axs[0][i].set_title(pl)
+    pts = sim['G'][i]
+    axs[0][i].plot(np.real(pts), np.imag(pts))
+    axs[0][i].set_aspect('equal')
+    pts = Phi[i]
+    axs[1][i].plot(np.real(pts), np.imag(pts))
+    axs[1][i].set_aspect('equal')
+# %%
+sol = minimize(objective, inc_rotation_matrix_T.reshape(-1), args=(sim['F'], masses), options={'gtol': 1e-8, 'disp': True})
+inc_rotation_matrix_opt_T = sol.x.reshape(5,5)
+
+with np.printoptions(suppress=True, precision=4):
+    print(np.linalg.det(inc_rotation_matrix_opt_T))
+    print(inc_rotation_matrix_opt_T @ inc_rotation_matrix_opt_T.T)
+
+with np.printoptions(suppress=True, precision=4):
+    print("original\n", inc_rotation_matrix_T)
+    print("optimized\n", inc_rotation_matrix_opt_T)
+
+transformedY = (np.linalg.inv(inc_rotation_matrix_opt_T) @ sim['F'])
+
+fig, axs = plt.subplots(2,5,figsize=(15, 5))
+for i, pl in enumerate(planets + ('Asteroid',)):
+    axs[0][i].set_title(pl)
+    pts = sim['F'][i]
+    axs[0][i].plot(np.real(pts), np.imag(pts))
+    axs[0][i].set_aspect('equal')
+    pts = transformedY[i]
+    axs[1][i].plot(np.real(pts), np.imag(pts))
+    axs[1][i].set_aspect('equal')
+# %%
+asteroid_phi = Phi[-1][:100]
 plt.plot(np.angle(asteroid_phi), np.abs(asteroid_phi))
 # %%
 angle = np.angle(asteroid_phi)
