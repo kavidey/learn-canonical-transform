@@ -248,7 +248,7 @@ def objective(R, G, m):
     # U, S, Vh = np.linalg.svd(W)
     # R = U @ Vh
 
-    rotation_loss = ((np.eye(5) - R @ R.T) ** 2).sum() + (np.linalg.det(R) - 1) ** 2
+    rotation_loss = ((np.eye(5) - R @ R.T) ** 2).sum() #+ (np.linalg.det(R) - 1) ** 2
 
     Phi = R.T @ G
 
@@ -303,125 +303,14 @@ for i, pl in enumerate(planets + ('Asteroid',)):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
+fig, axs = plt.subplots(4, 1)
 asteroid_phi = Phi[-1][:100]
-plt.plot(np.angle(asteroid_phi), np.abs(asteroid_phi))
+axs[0].plot(np.angle(asteroid_phi), np.abs(asteroid_phi))
+axs[1].plot(np.abs(asteroid_phi))
+axs[2].plot(np.angle(asteroid_phi))
+axs[3].plot(np.gradient(np.angle(asteroid_phi)))
 # %%
 angle = np.angle(asteroid_phi)
 plt.plot(sim['time'][:100], jnp.gradient(jnp.sin(angle)))
 plt.plot(sim['time'][:100], jnp.cos(angle) * (1/(1.5 * jnp.pi)))
-# %%
-train_steps = 10000
-eval_every = 200
-batch_size = 1024
-
-data = np.concatenate((np.abs(Phi), np.angle(Phi)), axis=0).T
-# data = np.concatenate((np.real(Phi), np.imag(Phi)), axis=0).T
-
-train_ds = tf.data.Dataset.from_tensor_slices(data)
-train_ds = train_ds.repeat()#.shuffle(256)
-train_ds = train_ds.batch(batch_size, drop_remainder=True).take(train_steps).prefetch(1)
-# %%
-class SympTransform(nnx.Module):
-    def __init__(self, N: int, layers, sublayers, *, rngs: nnx.Rngs, dt=0.1, epsilon=0.1):
-        self.N = N
-        self.dt = dt
-        self.epsilon = epsilon
-        self.layers = [LA_Layer(N, sublayers, rngs=rngs) for _ in range(layers)]
-
-    def __call__(self, x):
-        x_orig = x
-        h = self.dt * jnp.ones_like(x[..., -1:])
-        for layer in self.layers:
-            x = layer(x, h)
-        return x_orig + self.epsilon * x
-# %%
-@nnx.jit
-def train_step(
-    model: SympTransform,
-    optimizer: nnx.Optimizer,
-    metrics: nnx.MultiMetric,
-    batch
-):
-    def loss_fn(model: SympTransform, batch):
-        Y = model(batch)
-        
-        p, q = get_pq(Y, model.N)
-
-        # J = jnp.sqrt(p ** 2 + q ** 2)
-        J = p
-        J_loss = (jnp.gradient(J, axis=-2) ** 2).sum()
-        # J_loss = ((p - jnp.mean(p)) ** 2).mean()
-        J_magnitude_loss = 1/(jnp.linalg.norm(J, axis=-2) + 0.001).sum()
-
-        # phi = jnp.atan2(p, q)
-        phi = q
-        omega = jnp.gradient(jnp.sin(phi), axis=-2)
-        omega_loss = ((omega - jnp.cos(phi) * (1/(1.5 * jnp.pi))) ** 2).sum()
-
-        loss = J_loss + omega_loss
-        # loss = J_loss + J_magnitude_loss
-
-        return loss, (p, q)
-
-    grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
-    (loss, aux), grads = grad_fn(model, batch)
-    metrics.update(loss=loss)
-    optimizer.update(grads)
-
-    return aux
-# %%
-model = SympTransform(int(data.shape[-1]/2), 5, 3, rngs=nnx.Rngs(0))
-
-learning_rate = 0.005
-momentum = 0.9
-opt = nnx.Optimizer(model, optax.adamw(learning_rate, momentum))
-
-metrics = nnx.MultiMetric(loss=nnx.metrics.Average("loss"))
-# %%
-step_list = []
-metric_history = {"train_loss": []}
-
-for step, batch in enumerate(train_ds.as_numpy_iterator()):
-    model_meta = train_step(model, opt, metrics, batch)
-
-    if step > 0 and (step % eval_every == 0 or step == train_steps - 1):
-        for metric, value in metrics.compute().items():
-            metric_history[f"train_{metric}"].append(value)
-        metrics.reset()
-
-        step_list.append(step)
-
-        clear_output(wait=True)
-
-        fig, (ax1) = plt.subplots(1, 1, figsize=(15, 5))
-        ax1.set_title("Loss")
-        ax1.plot(step_list, metric_history["train_loss"])
-        plt.show()
-# %%
-obj_idx = 4
-test_data = data[:2000]
-p, q = get_pq(test_data, model.N)
-x = p[...,obj_idx] * np.exp(1j * q[...,obj_idx])
-# x = p[...,-1] + 1j * q[...,-1]
-
-P, Q = get_pq(model(test_data), model.N)
-X = P[...,obj_idx] * np.exp(1j * Q[...,obj_idx])
-# X = P[..., -1] + 1j * Q[...,-1]
-
-fig, (axs) = plt.subplots(3, 2, figsize=(15, 15))
-axs[0, 0].plot(jnp.abs(x))
-axs[0, 1].plot(jnp.abs(X))
-
-axs[1, 0].plot(jnp.gradient(jnp.sin(jnp.angle(x))))
-axs[1, 0].plot(jnp.cos(jnp.angle(x)) / (1.5 * jnp.pi))
-axs[1, 1].plot(jnp.gradient(jnp.sin(jnp.angle(X))))
-axs[1, 1].plot(jnp.cos(jnp.angle(X)) / (1.5 * jnp.pi))
-
-axs[2, 0].plot(jnp.real(x), jnp.imag(x))
-axs[2, 0].set_aspect('equal')
-axs[2, 1].plot(jnp.real(X), jnp.imag(X))
-axs[2, 1].set_aspect('equal')
-# %%
-plt.plot(jnp.angle(x), jnp.abs(x))
-plt.plot(jnp.angle(X), jnp.abs(X))
 # %%
