@@ -12,18 +12,18 @@ import celmech as cm
 integration_path = Path("datasets") / "planet_integration"
 integration_path.mkdir(parents=True, exist_ok=True)
 # %%
-sim = rb.Simulation()
-date = "2023-09-13 12:00"
-sim.add("Sun", date=date)
-sim.add("Mercury", date=date)
-sim.add("Venus", date=date)
-sim.add("Earth", date=date)
-sim.add("Mars", date=date)
-sim.add("Jupiter", date=date)
-sim.add("Saturn", date=date)
-sim.add("Uranus", date=date)
-sim.add("Neptune", date=date)
-sim.save_to_file(str(integration_path/"planets.bin"))
+# sim = rb.Simulation()
+# date = "2023-09-13 12:00"
+# sim.add("Sun", date=date)
+# sim.add("Mercury", date=date)
+# sim.add("Venus", date=date)
+# sim.add("Earth", date=date)
+# sim.add("Mars", date=date)
+# sim.add("Jupiter", date=date)
+# sim.add("Saturn", date=date)
+# sim.add("Uranus", date=date)
+# sim.add("Neptune", date=date)
+# sim.save_to_file(str(integration_path/"planets.bin"))
 # %%
 sim = rb.Simulation(str(integration_path/'planets.bin'))
 sim.move_to_com()
@@ -34,7 +34,7 @@ sim.integrator='whfast'
 sim.dt = ps[1].P/100.
 sim.ri_whfast.safe_mode = 0
 
-Tfin_approx = 5e8*ps[-1].P
+Tfin_approx = 1e8*ps[4].P
 total_steps = np.ceil(Tfin_approx / sim.dt)
 Tfin = total_steps * sim.dt + sim.dt
 Nout = 100_000
