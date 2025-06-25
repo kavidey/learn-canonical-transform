@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 from IPython.display import clear_output
 from scipy.optimize import minimize
 
-import tensorflow as tf
-from flax import nnx
-import optax
-import orbax.checkpoint as ocp
-from nn.sympnet.la import LA_Layer
-from nn.utils import get_pq, get_x
+# import tensorflow as tf
+# from flax import nnx
+# import optax
+# import orbax.checkpoint as ocp
+# from nn.sympnet.la import LA_Layer
+# from nn.utils import get_pq, get_x
 
 import rebound as rb
 
@@ -425,7 +425,15 @@ g_vec[2] = list(planet_ecc_fmft['Uranus'].keys())[0]
 g_vec[3] = list(planet_ecc_fmft['Neptune'].keys())[0]
 g_vec[4] = list(planet_ecc_fmft['Asteroid'].keys())[0]
 
+g_amp = np.zeros(5, dtype=np.complex128)
+g_amp[0] = planet_ecc_fmft['Jupiter'][g_vec[0]]
+g_amp[1] = planet_ecc_fmft['Saturn'][g_vec[1]]
+g_amp[2] = planet_ecc_fmft['Uranus'][g_vec[2]]
+g_amp[3] = planet_ecc_fmft['Neptune'][g_vec[3]]
+g_amp[4] = planet_ecc_fmft['Asteroid'][g_vec[4]]
+
 print(g_vec * TO_ARCSEC_PER_YEAR)
+print(g_amp)
 # %%
 combs = []
 for pl in planets + ("Asteroid",):
@@ -438,10 +446,18 @@ for pl in planets + ("Asteroid",):
         omega_N,amp = closest_key_entry(planet_ecc_fmft[pl],omega)
         omega_error = np.abs(omega_N/omega-1)
         omega_error_pct = np.abs((omega_N - omega)/omega)
-        if omega_error<0.001:# and omega_error_pct < 0.01:
+        if omega_error<1e-4:# and omega_error_pct < 0.01:
             print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
             comb[tuple(k)] = amp
     combs.append(comb)
+# %%
+# for pl in combs:
+#     to_del = []
+#     for comb in pl.keys():
+#         if comb != (-1, 2, 0, 0, 0):
+#             to_del.append(comb)
+#     for d in to_del:
+#         del pl[d]
 # %%
 x_val = Phi
 x = [sympy.Symbol("X_"+str(i)) for i in range(N)]
@@ -454,15 +470,19 @@ x_val_subs = {x[i]: x_val[:, i] for i in range(N)}
 iterations = 1
 for i in range(1, iterations+1):
     x_bar_i = [sympy.Symbol(f"\\bar X^{{({i})}}_"+str(j)) for j in range(N)]
+    # loop through each object
     for j in range(N):
+        # to first order the coordinate is the original coordinate
         x_bar_i_j = x_bars[-1][j]
+        # correct for each combination
         for k,amp in combs[j].items():
             term = amp
+            # loop through each object
             for k_idx in range(N):
-                if k[k_idx] == 0:
-                    continue
-                term *= x_bars[-1][k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()
-            x_bar_i_j += term
+                # add each object the correct number of times
+                for l in range(np.abs(k[k_idx])):
+                    term *= x_bars[-1][k_idx]/g_amp[k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()/np.conj(g_amp[k_idx])
+            x_bar_i_j -= term
         subs[x_bar_i[j]] = x_bar_i_j
     x_bars.append(x_bar_i)
 
