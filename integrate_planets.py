@@ -31,15 +31,15 @@ sim.move_to_com()
 ps = sim.particles
 
 sim.integrator='whfast'
-sim.dt = ps[1].P/100.
+sim.dt = ps[1].P/10.
 sim.ri_whfast.safe_mode = 0
 
-Tfin_approx = 1e8*ps[4].P
+Tfin_approx = 5e9*ps[4].P
 total_steps = np.ceil(Tfin_approx / sim.dt)
 Tfin = total_steps * sim.dt + sim.dt
-Nout = 100_000
+Nout = 500_000
 
-sim_file = integration_path / f"planet_integration.sa"
+sim_file = integration_path / f"planet_integration.{int(Tfin_approx)}.{int(Nout)}.sa"
 sim.save_to_file(str(sim_file), step=int(np.floor(total_steps/Nout)), delete_file=True)
 sim.integrate(Tfin, exact_finish_time=0)
 # %%

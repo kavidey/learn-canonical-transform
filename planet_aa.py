@@ -46,6 +46,7 @@ def closest_key_entry(d, target):
 # %%
 dataset_path = Path('datasets') / 'planet_integration'
 TO_ARCSEC_PER_YEAR = 60*60*180/np.pi * (2*np.pi)
+TO_YEAR = 1/(2*np.pi)
 N = 8
 # %%
 rb_sim = rb.Simulation(str(dataset_path/'planets.bin'))
@@ -76,7 +77,7 @@ def load_sim(path):
 full_sim = load_sim(dataset_path / "planet_integration.sa")
 print(full_sim['time'].shape)
 # %%
-keep_first = int(5e3)
+keep_first = int(50e3)
 sim = {}
 for key, val in full_sim.items():
     sim[key] = val[..., :keep_first]
@@ -241,27 +242,34 @@ for i, pl in enumerate(planets):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
+# %config InlineBackend.figure_format = 'retina'
+# plt.rcParams['font.size'] = 12
 X = jnp.concatenate((full_sim['x'], -1j*np.conj(full_sim['x'])), axis=0)
 Phi_full = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ X)[:N]
-fig, axs = plt.subplots(2, 2, figsize=(15, 7))
-axs[0][0].plot(np.abs(full_sim['x'][0]))
-axs[1][0].plot(np.abs(Phi_full[0]))
+# fig, axs = plt.subplots(2, 2, figsize=(6, 4), sharex=True)
+fig, axs = plt.subplots(2, 2, figsize=(15, 7), sharex=True)
+axs[0][0].plot(full_sim['time'] * TO_YEAR, np.abs(full_sim['x'][0]))
+axs[1][0].plot(full_sim['time'] * TO_YEAR, np.abs(Phi_full[0]))
 axs[0][0].set_ylim(0, 6.5e-5)
 axs[1][0].set_ylim(0, 6.5e-5)
 axs[0][0].set_title("Mercury Before")
 axs[1][0].set_title("Mercury After")
-axs[0][0].axvline(keep_first, linestyle="--", color="black")
-axs[1][0].axvline(keep_first, linestyle="--", color="black")
+axs[0][0].axvline(full_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
+axs[1][0].axvline(full_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
+axs[1][0].set_xlabel("Years")
 
-
-axs[0][1].plot(np.abs(full_sim['x'][4]))
-axs[1][1].plot(np.abs(Phi_full[4]))
+axs[0][1].plot(full_sim['time'] * TO_YEAR, np.abs(full_sim['x'][4]))
+axs[1][1].plot(full_sim['time'] * TO_YEAR, np.abs(Phi_full[4]))
 axs[0][1].set_ylim(0, 3e-3)
 axs[1][1].set_ylim(0, 3e-3)
 axs[0][1].set_title("Jupiter Before")
 axs[1][1].set_title("Jupiter After")
-axs[0][1].axvline(keep_first, linestyle="--", color="black")
-axs[1][1].axvline(keep_first, linestyle="--", color="black")
+axs[0][1].axvline(full_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
+axs[1][1].axvline(full_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
+axs[1][1].set_xlabel("Years")
+# plt.tight_layout(pad=0.4, w_pad=1.0, h_pad=0.2)
+# %config InlineBackend.figure_format = ''
+# plt.rcParams['font.size'] = 10
 # %%
 def planet_fmft(time, x, N=14, display=False):
     planet_ecc_fmft = {}
@@ -286,14 +294,14 @@ planet_ecc_fmft = planet_fmft(sim['time'], Phi, display=True)
 # %%
 possible_k = []
 # SECOND ORDER
-# for a in range(N):
-#     for b in range(a+1, N):
-#         if a == b:
-#             continue
-#         k = np.zeros(N, dtype=int)
-#         k[a] += 1
-#         k[b] -= 1
-#         possible_k.append(k)
+for a in range(N):
+    for b in range(a+1, N):
+        if a == b:
+            continue
+        k = np.zeros(N, dtype=int)
+        k[a] += 1
+        k[b] -= 1
+        possible_k.append(k)
 
 # THIRD ORDER
 for a in range(N):
@@ -327,10 +335,10 @@ g_amp[0] = planet_ecc_fmft['Mercury'][g_vec[0]]
 g_amp[1] = planet_ecc_fmft['Venus'][g_vec[1]]
 g_amp[2] = planet_ecc_fmft['Earth'][g_vec[2]]
 g_amp[3] = planet_ecc_fmft['Mars'][g_vec[3]]
-g_amp[4] = planet_ecc_fmft['Jupiter'][g_vec[0]]
-g_amp[5] = planet_ecc_fmft['Saturn'][g_vec[1]]
-g_amp[6] = planet_ecc_fmft['Uranus'][g_vec[2]]
-g_amp[7] = planet_ecc_fmft['Neptune'][g_vec[3]]
+g_amp[4] = planet_ecc_fmft['Jupiter'][g_vec[4]]
+g_amp[5] = planet_ecc_fmft['Saturn'][g_vec[5]]
+g_amp[6] = planet_ecc_fmft['Uranus'][g_vec[6]]
+g_amp[7] = planet_ecc_fmft['Neptune'][g_vec[7]]
 
 print(g_vec * TO_ARCSEC_PER_YEAR)
 print(g_amp)
@@ -393,10 +401,10 @@ for i in range(iterations+1):
 x_bar_n
 # %%
 Phi_second_order = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N)])
-_ = planet_fmft(base_sim['time'], Phi_second_order, display=True)
+_ = planet_fmft(sim['time'], Phi_second_order, display=True)
 # %%
-fig, axs = plt.subplots(2,8,figsize=(15, 5))
-for i, pl in enumerate(planets + ('Asteroid',)):
+fig, axs = plt.subplots(2,8,figsize=(20, 5))
+for i, pl in enumerate(planets):
     axs[0][i].set_title(pl)
     pts = Phi[i]
     axs[0][i].plot(np.real(pts), np.imag(pts))
