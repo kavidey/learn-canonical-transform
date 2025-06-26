@@ -75,9 +75,9 @@ def load_sim(path):
     return results
 # %%
 full_sim = load_sim(dataset_path / "planet_integration.sa")
-print(full_sim['time'].shape)
+print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
 # %%
-keep_first = int(50e3)
+keep_first = int(1e3)
 sim = {}
 for key, val in full_sim.items():
     sim[key] = val[..., :keep_first]
@@ -270,6 +270,14 @@ axs[1][1].set_xlabel("Years")
 # plt.tight_layout(pad=0.4, w_pad=1.0, h_pad=0.2)
 # %config InlineBackend.figure_format = ''
 # plt.rcParams['font.size'] = 10
+
+np.savez_compressed("planet_aa",
+                    mercury_before=full_sim['x'][0],
+                    mercury_after=Phi_full[0],
+                    jupiter_before=full_sim['x'][4],
+                    jupiter_after=Phi_full[4],
+                    sim_time=full_sim['time'] * TO_YEAR,
+                    training_time=full_sim['time'][keep_first] * TO_YEAR)
 # %%
 def planet_fmft(time, x, N=14, display=False):
     planet_ecc_fmft = {}

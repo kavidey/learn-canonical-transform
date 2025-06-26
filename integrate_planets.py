@@ -34,7 +34,7 @@ sim.integrator='whfast'
 sim.dt = ps[1].P/10.
 sim.ri_whfast.safe_mode = 0
 
-Tfin_approx = 5e9*ps[4].P
+Tfin_approx = 2e10*ps[4].P
 total_steps = np.ceil(Tfin_approx / sim.dt)
 Tfin = total_steps * sim.dt + sim.dt
 Nout = 500_000
