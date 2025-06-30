@@ -1,5 +1,6 @@
 # %%
 from pathlib import Path
+from tqdm import tqdm
 import jax
 import jax.numpy as jnp
 import jax.random as jnr
@@ -74,13 +75,23 @@ def load_sim(path):
 
     return results
 # %%
-full_sim = load_sim(dataset_path / "planet_integration.sa")
+full_sim = load_sim(dataset_path / "planet_integration.236355012349.500000.sa")
+print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
+for key, val in full_sim.items():
+    full_sim[key] = val[..., :24081]
 print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
 # %%
-keep_first = int(1e3)
+# train_sim = load_sim(dataset_path / "planet_integration.59088753087.500000.sa")
+train_sim = load_sim(dataset_path / "planet_integration.590887530.200000.sa")
+# train_sim = load_sim(dataset_path / "planet_integration.sa")
+print(train_sim['time'].shape, train_sim['time'][-1] * TO_YEAR)
+# keep_first = int(train_sim['time'].shape[0]*0.9)
+keep_first = int(50e3)
+print(train_sim['time'][keep_first] * TO_YEAR)
 sim = {}
-for key, val in full_sim.items():
+for key, val in train_sim.items():
     sim[key] = val[..., :keep_first]
+train_sim = sim
 # %%
 planets = ("Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
 planet_ecc_fmft = dict()
@@ -110,8 +121,8 @@ s_vec = np.zeros(8)
 
 g_vec[0] = list(planet_ecc_fmft['Mercury'].keys())[0]
 g_vec[1] = list(planet_ecc_fmft['Venus'].keys())[0]
-g_vec[2] = list(planet_ecc_fmft['Earth'].keys())[3]
-g_vec[3] = list(planet_ecc_fmft['Mars'].keys())[0]
+g_vec[2] = list(planet_ecc_fmft['Earth'].keys())[2]
+g_vec[3] = list(planet_ecc_fmft['Mars'].keys())[1]
 g_vec[4] = list(planet_ecc_fmft['Jupiter'].keys())[0]
 g_vec[5] = list(planet_ecc_fmft['Saturn'].keys())[0]
 g_vec[6] = list(planet_ecc_fmft['Uranus'].keys())[1]
@@ -215,7 +226,7 @@ def objective(M, J, X):
     symplectic_loss = ((M.T @ J @ M - J)**2).sum()
 
     Phi = M.T @ X
-    J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2)
+    J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2) / jnp.pow(jnp.abs(Phi).mean(axis=1), 1/5)[..., None]
     J_loss = J_loss.sum()
     # J_loss = (J_loss / jnp.pow(jnp.concat((masses, masses))[..., None], 1/4)).sum()
     
@@ -244,40 +255,51 @@ for i, pl in enumerate(planets):
 # %%
 # %config InlineBackend.figure_format = 'retina'
 # plt.rcParams['font.size'] = 12
-X = jnp.concatenate((full_sim['x'], -1j*np.conj(full_sim['x'])), axis=0)
-Phi_full = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ X)[:N]
+X_full = jnp.concatenate((full_sim['x'], -1j*np.conj(full_sim['x'])), axis=0)
+Phi_full = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ X_full)[:N]
+X_train = jnp.concatenate((train_sim['x'], -1j*np.conj(train_sim['x'])), axis=0)
+Phi_train = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ X_train)[:N]
 # fig, axs = plt.subplots(2, 2, figsize=(6, 4), sharex=True)
-fig, axs = plt.subplots(2, 2, figsize=(15, 7), sharex=True)
-axs[0][0].plot(full_sim['time'] * TO_YEAR, np.abs(full_sim['x'][0]))
+fig, axs = plt.subplots(2, 2, figsize=(15, 7))
+# axs[0][0].plot(full_sim['time'] * TO_YEAR, np.abs(full_sim['x'][0]))
+axs[0][0].plot(train_sim['time'] * TO_YEAR, np.abs(train_sim['x'][0]))
 axs[1][0].plot(full_sim['time'] * TO_YEAR, np.abs(Phi_full[0]))
+axs[1][0].plot(train_sim['time'] * TO_YEAR, np.abs(Phi_train[0]))
 axs[0][0].set_ylim(0, 6.5e-5)
 axs[1][0].set_ylim(0, 6.5e-5)
 axs[0][0].set_title("Mercury Before")
 axs[1][0].set_title("Mercury After")
-axs[0][0].axvline(full_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
-axs[1][0].axvline(full_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
+# axs[0][0].axvline(train_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
+axs[1][0].axvline(train_sim['time'][keep_first-1] * TO_YEAR, linestyle="--", color="black")
 axs[1][0].set_xlabel("Years")
 
-axs[0][1].plot(full_sim['time'] * TO_YEAR, np.abs(full_sim['x'][4]))
+# axs[0][1].plot(full_sim['time'] * TO_YEAR, np.abs(full_sim['x'][4]))
+axs[0][1].plot(train_sim['time'] * TO_YEAR, np.abs(train_sim['x'][4]))
 axs[1][1].plot(full_sim['time'] * TO_YEAR, np.abs(Phi_full[4]))
+axs[1][1].plot(train_sim['time'] * TO_YEAR, np.abs(Phi_train[4]))
 axs[0][1].set_ylim(0, 3e-3)
 axs[1][1].set_ylim(0, 3e-3)
 axs[0][1].set_title("Jupiter Before")
 axs[1][1].set_title("Jupiter After")
-axs[0][1].axvline(full_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
-axs[1][1].axvline(full_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
+# axs[0][1].axvline(train_sim['time'][keep_first] * TO_YEAR, linestyle="--", color="black")
+axs[1][1].axvline(train_sim['time'][keep_first-1] * TO_YEAR, linestyle="--", color="black")
 axs[1][1].set_xlabel("Years")
 # plt.tight_layout(pad=0.4, w_pad=1.0, h_pad=0.2)
 # %config InlineBackend.figure_format = ''
 # plt.rcParams['font.size'] = 10
 
-np.savez_compressed("planet_aa",
-                    mercury_before=full_sim['x'][0],
-                    mercury_after=Phi_full[0],
-                    jupiter_before=full_sim['x'][4],
-                    jupiter_after=Phi_full[4],
-                    sim_time=full_sim['time'] * TO_YEAR,
-                    training_time=full_sim['time'][keep_first] * TO_YEAR)
+# np.savez_compressed("planet_aa",
+#                     full_mercury_before=full_sim['x'][0],
+#                     full_mercury_after=Phi_full[0],
+#                     full_jupiter_before=full_sim['x'][4],
+#                     full_jupiter_after=Phi_full[4],
+#                     full_time=full_sim['time'] * TO_YEAR,
+#                     train_mercury_before=train_sim['x'][0],
+#                     train_mercury_after=Phi_train[0],
+#                     train_jupiter_before=train_sim['x'][4],
+#                     train_jupiter_after=Phi_train[4],
+#                     train_time=train_sim['time'] * TO_YEAR,
+#                     training_time=train_sim['time'][keep_first-1] * TO_YEAR)
 # %%
 def planet_fmft(time, x, N=14, display=False):
     planet_ecc_fmft = {}
@@ -300,124 +322,103 @@ def planet_fmft(time, x, N=14, display=False):
 
 planet_ecc_fmft = planet_fmft(sim['time'], Phi, display=True)
 # %%
-possible_k = []
-# SECOND ORDER
-for a in range(N):
-    for b in range(a+1, N):
-        if a == b:
-            continue
-        k = np.zeros(N, dtype=int)
-        k[a] += 1
-        k[b] -= 1
-        possible_k.append(k)
+# increase effective simulation cadence
 
-# THIRD ORDER
-for a in range(N):
-    for b in range(a,N):
-        for c in range(N):
-            if c==a:
-                continue
-            if c==b:
-                continue
-            k = np.zeros(N, dtype=int)
-            k[a] +=1
-            k[b] +=1
-            k[c] -=1
-            possible_k.append(k)
+from multiprocessing import Pool
 
-possible_k = np.array(possible_k)
+full_sim_end_time = full_sim['time'][-1]
+segment_len = int(10e6) / TO_YEAR
+segments = np.arange(0, full_sim_end_time, segment_len)
+pts_per_segment = 4096
+tmp_dir = dataset_path/'tmp3'
+tmp_dir.mkdir(exist_ok=True, parents=True)
+
+
+def thread_init(*rest):
+    global sa_
+    sa_ = rb.Simulationarchive(str(dataset_path / "planet_integration.236355012349.500000.sa"))
+
+def run(segment_start):
+    sim = sa_.getSimulation(segment_start)
+
+    Tfin_approx = min(segment_start + segment_len, full_sim_end_time) - segment_start
+    total_steps = np.ceil(Tfin_approx / sim.dt)
+    Tfin = total_steps * sim.dt + sim.dt
+    print(Tfin + segment_start, total_steps, int(np.floor(total_steps/pts_per_segment)))
+
+    sim.save_to_file(str(tmp_dir/f"segment_{segment_start}.sa"), step=int(np.floor(total_steps/pts_per_segment)), delete_file=True)
+    sim.integrate(Tfin + segment_start, exact_finish_time=0)
+
+with Pool(50, initializer=thread_init) as pool:
+    pool.map(run, segments)
 # %%
-g_vec = np.zeros(8)
+N = full_sim['x'].shape[0]
+X = jnp.concatenate((full_sim['x'], -1j*np.conj(full_sim['x'])), axis=0)
+X_segments = [X[..., (full_sim['time'] >= t_) & (full_sim['time'] < t_ + segment_len)] for t_ in segments]
 
-g_vec[0] = list(planet_ecc_fmft['Mercury'].keys())[0]
-g_vec[1] = list(planet_ecc_fmft['Venus'].keys())[0]
-g_vec[2] = list(planet_ecc_fmft['Earth'].keys())[0]
-g_vec[3] = list(planet_ecc_fmft['Mars'].keys())[0]
-g_vec[4] = list(planet_ecc_fmft['Jupiter'].keys())[0]
-g_vec[5] = list(planet_ecc_fmft['Saturn'].keys())[0]
-g_vec[6] = list(planet_ecc_fmft['Uranus'].keys())[0]
-g_vec[7] = list(planet_ecc_fmft['Neptune'].keys())[0]
+def objective(M, J, X):
+    M = jnp.reshape(M, (N*2, N*2))
+    
+    symplectic_loss = ((M.T @ J @ M - J)**2).sum()
 
-g_amp = np.zeros(8, dtype=np.complex128)
-g_amp[0] = planet_ecc_fmft['Mercury'][g_vec[0]]
-g_amp[1] = planet_ecc_fmft['Venus'][g_vec[1]]
-g_amp[2] = planet_ecc_fmft['Earth'][g_vec[2]]
-g_amp[3] = planet_ecc_fmft['Mars'][g_vec[3]]
-g_amp[4] = planet_ecc_fmft['Jupiter'][g_vec[4]]
-g_amp[5] = planet_ecc_fmft['Saturn'][g_vec[5]]
-g_amp[6] = planet_ecc_fmft['Uranus'][g_vec[6]]
-g_amp[7] = planet_ecc_fmft['Neptune'][g_vec[7]]
+    Phi = M.T @ X
+    J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2) / jnp.pow(jnp.abs(Phi).mean(axis=1), 1/5)[..., None]
+    J_loss = J_loss.sum()
+    # J_loss = (J_loss / jnp.pow(jnp.concat((masses, masses))[..., None], 1/4)).sum()
+    
+    loss = symplectic_loss + J_loss * 10
+    return loss
+obj_and_grad = jax.jit(jax.value_and_grad(lambda M, X: objective(M, J, X)))
 
-print(g_vec * TO_ARCSEC_PER_YEAR)
-print(g_amp)
+M_segments = []
+Phi_segments = []
+
+for i in tqdm(range(len(segments))):
+    segment_start = segments[i]
+    X = X_segments[i]
+
+    sim_train = load_sim(tmp_dir/f"segment_{segment_start}.sa")
+    train_X = jnp.concatenate((sim_train['x'], -1j*np.conj(sim_train['x'])), axis=0)
+    # initial = ecc_rotation_matrix_opt_T.copy()
+    initial = (M_segments[-1] if M_segments else ecc_rotation_matrix_opt_T).copy()
+    # np.random.seed(i)
+    # initial = ecc_rotation_matrix_opt_T.copy() + np.random.normal(0, 0.1, (N*2, N*2))
+    sol = minimize(obj_and_grad, initial.reshape(-1), args=(train_X,), options={'gtol': 1e-8, 'disp': False}, jac=True)
+    # print(sim_train['time'][0] * TO_YEAR, sim_train['time'][-1] * TO_YEAR)
+    M = sol.x.reshape((N*2, N*2))
+    Phi_segments.append((np.linalg.inv(M) @ X)[:N])
+    M_segments.append(M)
 # %%
-combs = []
-for pl in planets:
-    print(pl) 
-    print("-"*len(pl))
-    print("kvec \t\t\t omega \t err. \t amplitude")
-    comb = {}
-    for k in possible_k:
-        omega = k @ g_vec
-        omega_N,amp = closest_key_entry(planet_ecc_fmft[pl],omega)
-        omega_error = np.abs(omega_N/omega-1)
-        omega_error_pct = np.abs((omega_N - omega)/omega)
-        if omega_error<1e-4:# and omega_error_pct < 0.01:
-            print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
-            comb[tuple(k)] = amp
-    combs.append(comb)
+Phi_segments_comb = np.concat(Phi_segments, axis=1)
+M_segments = np.array(M_segments)
 # %%
-# for pl in combs:
-#     to_del = []
-#     for comb in pl.keys():
-#         if comb != (-1, 2, 0, 0, 0):
-#             to_del.append(comb)
-#     for d in to_del:
-#         del pl[d]
-# %%
-x_val = Phi
-x = [sympy.Symbol("X_"+str(i)) for i in range(N)]
-x_bar_0 = [sympy.Symbol("\\bar X^{(0)}_"+str(i)) for i in range(N)]
+x_plt = full_sim['time'] * TO_YEAR / 1e6
+plt.plot(x_plt, np.abs(full_sim['x'][0]), label="orig")
+plt.plot(x_plt, np.abs(Phi_full[0]), label="train whole")
+plt.plot(x_plt, np.abs(Phi_segments_comb[0]), label="train 10 Myr")
 
-x_bars = [x_bar_0]
-subs = {x_bar_0[i]: x[i] for i in range(N)}
-x_val_subs = {x[i]: x_val[:, i] for i in range(N)}
+# prev_rng = [-1]
+# for seg in Phi_segments:
+#     rng = np.arange(prev_rng[-1]+1, prev_rng[-1]+len(seg[0])+1)
+#     plt.plot(full_sim['time'][rng] * TO_YEAR/1e6, np.abs(seg[0]))
+#     prev_rng = rng
 
-iterations = 1
-for i in range(1, iterations+1):
-    x_bar_i = [sympy.Symbol(f"\\bar X^{{({i})}}_"+str(j)) for j in range(N)]
-    # loop through each object
-    for j in range(N):
-        # to first order the coordinate is the original coordinate
-        x_bar_i_j = x_bars[-1][j]
-        # correct for each combination
-        for k,amp in combs[j].items():
-            term = amp
-            # loop through each object
-            for k_idx in range(N):
-                # add each object the correct number of times
-                for l in range(np.abs(k[k_idx])):
-                    term *= x_bars[-1][k_idx]/g_amp[k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()/np.conj(g_amp[k_idx])
-            x_bar_i_j -= term
-        subs[x_bar_i[j]] = x_bar_i_j
-    x_bars.append(x_bar_i)
+plt.xlim(0, 20)
 
-x_bar_n = x_bars[-1]
-for i in range(iterations+1):
-    for j in range(N):
-        x_bar_n[j] = x_bar_n[j].subs(subs)
-x_bar_n
+plt.xlabel("Myr")
+plt.legend()
+plt.show()
 # %%
-Phi_second_order = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N)])
-_ = planet_fmft(sim['time'], Phi_second_order, display=True)
+M_segments_flat = M_segments.reshape(len(segments), -1)
+plt.imshow(M_segments_flat.T)
 # %%
-fig, axs = plt.subplots(2,8,figsize=(20, 5))
-for i, pl in enumerate(planets):
-    axs[0][i].set_title(pl)
-    pts = Phi[i]
-    axs[0][i].plot(np.real(pts), np.imag(pts))
-    axs[0][i].set_aspect('equal')
-    pts = Phi_second_order[i]
-    axs[1][i].plot(np.real(pts), np.imag(pts))
-    axs[1][i].set_aspect('equal')
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
+sc = StandardScaler()
+sc.fit(M_segments_flat)
+
+pca = PCA(n_components=5)
+pca.fit(sc.transform(M_segments_flat))
+plt.plot(pca.transform(sc.transform(M_segments_flat)))
 # %%
