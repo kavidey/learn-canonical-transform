@@ -8,13 +8,6 @@ import matplotlib.pyplot as plt
 from IPython.display import clear_output
 from scipy.optimize import minimize
 
-# import tensorflow as tf
-# from flax import nnx
-# import optax
-# import orbax.checkpoint as ocp
-# from nn.sympnet.la import LA_Layer
-# from nn.utils import get_pq, get_x
-
 import rebound as rb
 
 from celmech.nbody_simulation_utilities import get_simarchive_integration_results
@@ -85,8 +78,8 @@ def load_sim(desn):
     # results['x'] = np.float64(results['x'])
     # results['y'] = np.float64(results['y'])
 
-    results['G'] = results['x']
-    results['F'] = results['y']
+    # results['G'] = results['x']
+    # results['F'] = results['y']
 
     # coordinate pairs are:
     # - Lambda, Lambda
@@ -101,11 +94,11 @@ planets = ("Jupiter","Saturn","Uranus","Neptune")
 planet_ecc_fmft = dict()
 planet_inc_fmft = dict()
 for i,pl in enumerate(planets):
-    planet_ecc_fmft[pl] = fmft(base_sim['time'],base_sim['G'][i],14)
+    planet_ecc_fmft[pl] = fmft(base_sim['time'],base_sim['x'][i],14)
     planet_e_freqs = np.array(list(planet_ecc_fmft[pl].keys()))
     planet_e_freqs_arcsec_per_yr = planet_e_freqs * TO_ARCSEC_PER_YEAR
 
-    planet_inc_fmft[pl] = fmft(base_sim['time'],base_sim['F'][i],8)
+    planet_inc_fmft[pl] = fmft(base_sim['time'],base_sim['y'][i],8)
     planet_inc_freqs = np.array(list(planet_inc_fmft[pl].keys()))
     planet_inc_freqs_arcsec_per_yr = planet_inc_freqs * TO_ARCSEC_PER_YEAR
 
@@ -174,8 +167,8 @@ for i, pl in enumerate(planets):
 # %%
 for desn in desns:
     sim = load_sim(desn)
-    asteroid_ecc_fmft = fmft(sim['time'],sim['G'][-1],14)
-    asteroid_inc_fmft = fmft(sim['time'],sim['F'][-1],8)
+    asteroid_ecc_fmft = fmft(sim['time'],sim['x'][-1],14)
+    asteroid_inc_fmft = fmft(sim['time'],sim['y'][-1],8)
 
     ecc_rotation_matrix_T = ecc_rotation_matrix_T_base.copy()
     inc_rotation_matrix_T = inc_rotation_matrix_T_base.copy()
@@ -248,7 +241,7 @@ for i,pl in enumerate(planets):
         if cnt > 1: break
     print()
 
-    pts = sim['G'][i]
+    pts = sim['x'][i]
     axs[0][i].plot(np.real(pts), np.imag(pts))
     axs[0][i].set_aspect('equal')
     pts = zsoln
@@ -265,28 +258,28 @@ print(np.linalg.det(ecc_rotation_matrix_T))
 
 print(ecc_rotation_matrix_T)
 
-Phi = (np.linalg.inv(ecc_rotation_matrix_T) @ sim['G'])
+Phi = (np.linalg.inv(ecc_rotation_matrix_T) @ sim['x'])
 Phi[-1] *= 1e7
 
 fig, axs = plt.subplots(2,5,figsize=(15, 5))
 for i, pl in enumerate(planets + ('Asteroid',)):
     axs[0][i].set_title(pl)
-    pts = sim['G'][i]
+    pts = sim['x'][i]
     axs[0][i].plot(np.real(pts), np.imag(pts))
     axs[0][i].set_aspect('equal')
     pts = Phi[i]
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
-# transformedY = (sim['F'].T @ inc_rotation_matrix_T.T).T
-transformedY = (np.linalg.inv(inc_rotation_matrix_T) @ sim['F'])
+# Theta = (sim['F'].T @ inc_rotation_matrix_T.T).T
+Theta = (np.linalg.inv(inc_rotation_matrix_T) @ sim['y'])
 
 fig, axs = plt.subplots(2,5,figsize=(15, 5))
 for i in range(5):
-    pts = sim['F'][i]
+    pts = sim['y'][i]
     axs[0][i].plot(np.real(pts), np.imag(pts))
     axs[0][i].set_aspect('equal')
-    pts = transformedY[i]
+    pts = Theta[i]
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
@@ -305,7 +298,7 @@ def objective(R, G, m):
     loss = rotation_loss + J_loss
     return loss
 
-obj_and_grad = jax.jit(jax.value_and_grad(lambda R: objective(R, sim['G'], masses)))
+obj_and_grad = jax.jit(jax.value_and_grad(lambda R: objective(R, sim['x'], masses)))
 
 sol = minimize(obj_and_grad, ecc_rotation_matrix_T.reshape(-1), options={'gtol': 1e-8, 'disp': True}, jac=True)
 ecc_rotation_matrix_opt_T = sol.x.reshape(5,5)
@@ -316,12 +309,12 @@ print(ecc_rotation_matrix_opt_T @ ecc_rotation_matrix_opt_T.T)
 print("original\n", ecc_rotation_matrix_T)
 print("optimized\n", ecc_rotation_matrix_opt_T)
 
-Phi = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ sim['G'])
+Phi = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ sim['x'])
 
 fig, axs = plt.subplots(2,5,figsize=(15, 5))
 for i, pl in enumerate(planets + ('Asteroid',)):
     axs[0][i].set_title(pl)
-    pts = sim['G'][i]
+    pts = sim['x'][i]
     axs[0][i].plot(np.real(pts), np.imag(pts))
     axs[0][i].set_aspect('equal')
     pts = Phi[i]
@@ -358,66 +351,109 @@ Phi = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ X)[:N]
 fig, axs = plt.subplots(2,5,figsize=(15, 5))
 for i, pl in enumerate(planets + ('Asteroid',)):
     axs[0][i].set_title(pl)
-    pts = sim['G'][i]
+    pts = sim['x'][i]
     axs[0][i].plot(np.real(pts), np.imag(pts))
     axs[0][i].set_aspect('equal')
     pts = Phi[i]
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
-fig, axs = plt.subplots(2, 1)
-axs[0].plot(np.real(Phi[-1, :1000]))
-axs[1].plot(np.real(Phi[-1, :100]))
-# %%
-def planet_fmft(time, x, N=14, display=False):
-    planet_ecc_fmft = {}
-    for i,pl in enumerate(planets + ("Asteroid",)):
-        planet_ecc_fmft[pl] = fmft(time,x[i],N)
-        planet_e_freqs = np.array(list(planet_ecc_fmft[pl].keys()))
+def objective(R, G, m):
+    R = jnp.reshape(R, (5,5))
 
-        if display:
-            print("")
-            print(pl)
-            print("-------")
-            for g in planet_e_freqs[:8]:
-                print("{:+07.3f} \t {:0.8f}".format(g * TO_ARCSEC_PER_YEAR, np.abs(planet_ecc_fmft[pl][g])))
-            # print("s")
-            # print("-------")
-            # for s in planet_inc_freqs[:4]:
-            #     print("{:+07.3f} \t {:0.6f}".format(s * TO_ARCSEC_PER_YEAR, np.abs(planet_inc_fmft[pl][s])))
+    rotation_loss = ((jnp.eye(5) - R @ R.T) ** 2).sum() #+ (np.linalg.det(R) - 1) ** 2
+
+    Phi = R.T @ G
+
+    J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2) / jnp.abs(Phi).mean(axis=1)[..., None]
+    J_loss = J_loss.sum()
+
+    loss = rotation_loss + J_loss * 0.1
+    return loss
+
+obj_and_grad = jax.jit(jax.value_and_grad(lambda R: objective(R, sim['y'], masses)))
+
+sol = minimize(obj_and_grad, ecc_rotation_matrix_T.reshape(-1), options={'gtol': 1e-8, 'disp': True}, jac=True)
+inc_rotation_matrix_opt_T = sol.x.reshape(5,5)
+
+print(np.linalg.det(inc_rotation_matrix_opt_T))
+print(inc_rotation_matrix_opt_T @ inc_rotation_matrix_opt_T.T)
+
+Theta = (np.linalg.inv(inc_rotation_matrix_opt_T) @ sim['y'])
+
+fig, axs = plt.subplots(2,5,figsize=(15, 5))
+for i, pl in enumerate(planets + ('Asteroid',)):
+    axs[0][i].set_title(pl)
+    pts = sim['y'][i]
+    axs[0][i].plot(np.real(pts), np.imag(pts))
+    axs[0][i].set_aspect('equal')
+    pts = Theta[i]
+    axs[1][i].plot(np.real(pts), np.imag(pts))
+    axs[1][i].set_aspect('equal')
+# %%
+N = sim['y'].shape[0]
+Y = jnp.concatenate((sim['y'], -1j*np.conj(sim['y'])), axis=0)
+
+def objective(M, J, Y):
+    M = jnp.reshape(M, (N*2, N*2))
     
-    return planet_ecc_fmft
+    symplectic_loss = ((M.T @ J @ M - J)**2).sum()
 
-planet_ecc_fmft = planet_fmft(base_sim['time'], Phi, display=True)
+    Phi = M.T @ Y
+    J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2) / (jnp.abs(Phi).mean(axis=1)[..., None] ** 2)
+    J_loss = J_loss.sum()
+    # J_loss = (J_loss / jnp.pow(jnp.concat((masses, masses))[..., None], 1/4)).sum()
+    
+    loss = symplectic_loss + J_loss * 10
+    return loss
+obj_and_grad = jax.jit(jax.value_and_grad(lambda M: objective(M, J, Y)))
+
+np.random.seed(1)
+# initial = np.eye(2*N) + np.random.normal(0, 0.1, (N*2, N*2))
+initial = jnp.block([[inc_rotation_matrix_opt_T, np.zeros((N,N))], [np.zeros((N, N)), inc_rotation_matrix_opt_T]])
+sol = minimize(obj_and_grad, initial.reshape(-1), jac=True, options={'gtol': 1e-8, 'disp': True})
+inc_rotation_matrix_opt_T = sol.x.reshape((N*2, N*2))
+
+print(inc_rotation_matrix_opt_T.T @ J @ inc_rotation_matrix_opt_T)
+Theta = (np.linalg.inv(initial) @ Y)[:N]
+
+fig, axs = plt.subplots(2,5,figsize=(15, 5))
+for i, pl in enumerate(planets + ('Asteroid',)):
+    axs[0][i].set_title(pl)
+    pts = sim['y'][i]
+    axs[0][i].plot(np.real(pts), np.imag(pts))
+    axs[0][i].set_aspect('equal')
+    pts = Theta[i]
+    axs[1][i].plot(np.real(pts), np.imag(pts))
+    axs[1][i].set_aspect('equal')
 # %%
-possible_k = []
-# SECOND ORDER
-# for a in range(N):
-#     for b in range(a+1, N):
-#         if a == b:
-#             continue
-#         k = np.zeros(N, dtype=int)
-#         k[a] += 1
-#         k[b] -= 1
-#         possible_k.append(k)
+# def planet_fmft(time, x, y, N=14, display=False):
+planet_ecc_fmft = {}
+planet_inc_fmft = {}
+for i,pl in enumerate(planets + ("Asteroid",)):
+    planet_ecc_fmft[pl] = fmft(base_sim['time'],Phi[i],14)
+    planet_e_freqs = np.array(list(planet_ecc_fmft[pl].keys()))
 
-# THIRD ORDER
-for a in range(N):
-    for b in range(a,N):
-        for c in range(N):
-            if c==a:
-                continue
-            if c==b:
-                continue
-            k = np.zeros(N, dtype=int)
-            k[a] +=1
-            k[b] +=1
-            k[c] -=1
-            possible_k.append(k)
 
-possible_k = np.array(possible_k)
+    planet_inc_fmft[pl] = fmft(base_sim['time'],Theta[i],14)
+    planet_i_freqs = np.array(list(planet_inc_fmft[pl].keys()))
+
+    print("")
+    print(pl)
+    print("-------")
+    for g in planet_e_freqs[:8]:
+        print("{:+07.3f} \t {:0.8f}".format(g * TO_ARCSEC_PER_YEAR, np.abs(planet_ecc_fmft[pl][g])))
+    print("s")
+    print("-------")
+    for s in planet_i_freqs[:4]:
+        print("{:+07.3f} \t {:0.6f}".format(s * TO_ARCSEC_PER_YEAR, np.abs(planet_inc_fmft[pl][s])))
+    
+    # return planet_ecc_fmft, planet_inc_fmft
+
+# planet_ecc_fmft, planet_inc_fmft = planet_fmft(base_sim['time'], Phi, Theta, display=True)
 # %%
 g_vec = np.zeros(5)
+s_vec = np.zeros(5)
 
 g_vec[0] = list(planet_ecc_fmft['Jupiter'].keys())[0]
 g_vec[1] = list(planet_ecc_fmft['Saturn'].keys())[0]
@@ -425,25 +461,80 @@ g_vec[2] = list(planet_ecc_fmft['Uranus'].keys())[0]
 g_vec[3] = list(planet_ecc_fmft['Neptune'].keys())[0]
 g_vec[4] = list(planet_ecc_fmft['Asteroid'].keys())[0]
 
+s_vec[0] = list(planet_inc_fmft['Jupiter'].keys())[0]
+s_vec[1] = list(planet_inc_fmft['Saturn'].keys())[0]
+s_vec[2] = list(planet_inc_fmft['Uranus'].keys())[0]
+s_vec[3] = list(planet_inc_fmft['Neptune'].keys())[1]
+s_vec[4] = list(planet_inc_fmft['Asteroid'].keys())[1]
+
 g_amp = np.zeros(5, dtype=np.complex128)
+s_amp = np.zeros(5, dtype=np.complex128)
+
 g_amp[0] = planet_ecc_fmft['Jupiter'][g_vec[0]]
 g_amp[1] = planet_ecc_fmft['Saturn'][g_vec[1]]
 g_amp[2] = planet_ecc_fmft['Uranus'][g_vec[2]]
 g_amp[3] = planet_ecc_fmft['Neptune'][g_vec[3]]
 g_amp[4] = planet_ecc_fmft['Asteroid'][g_vec[4]]
 
-print(g_vec * TO_ARCSEC_PER_YEAR)
-print(g_amp)
+s_amp[0] = planet_inc_fmft['Jupiter'][s_vec[0]]
+s_amp[1] = planet_inc_fmft['Saturn'][s_vec[1]]
+s_amp[2] = planet_inc_fmft['Uranus'][s_vec[2]]
+s_amp[3] = planet_inc_fmft['Neptune'][s_vec[3]]
+s_amp[4] = planet_inc_fmft['Asteroid'][s_vec[4]]
+
+omega_vec = np.concat([g_vec, s_vec])
+omega_amp = np.concat([g_amp, s_amp])
+
+s_conserved_idx = np.argmin(np.abs(omega_vec[N:])) + N
+
+print(omega_vec * TO_ARCSEC_PER_YEAR)
+print(omega_amp)
+# %%
+base_planet_list = planets + ("Asteroid",)
+psi_planet_list = (tuple(map(lambda pl: pl+"_X", base_planet_list)) + tuple(map(lambda pl: pl+"_Y", base_planet_list)))
+Psi = np.concat([Phi, Theta], axis=0)
+planet_fmft = {}
+for i,pl in enumerate(psi_planet_list):
+    planet_fmft[pl] = fmft(base_sim['time'], Psi[i], 14)
+# %%
+possible_k = []
+# SECOND ORDER
+for a in range(N*2):
+    for b in range(a+1, N*2):
+        if a == b:
+            continue
+        k = np.zeros(N*2, dtype=int)
+        k[a] += 1
+        k[b] -= 1
+        possible_k.append(k)
+
+# THIRD ORDER
+for a in range(N*2):
+    for b in range(a,N*2):
+        for c in range(N*2):
+            if c==a:
+                continue
+            if c==b:
+                continue
+            k = np.zeros(N*2, dtype=int)
+            k[a] +=1
+            k[b] +=1
+            k[c] -=1
+            possible_k.append(k)
+
+possible_k = np.array(possible_k)
 # %%
 combs = []
-for pl in planets + ("Asteroid",):
-    print(pl) 
+for pl in psi_planet_list:
+    print(f"{pl} \t base freq: {np.abs(list(planet_fmft[pl].items())[0][1]):.3f}") 
     print("-"*len(pl))
-    print("kvec \t\t\t omega \t err. \t amplitude")
+    print("kvec \t\t\t\t\t omega \t err. \t amplitude")
     comb = {}
     for k in possible_k:
-        omega = k @ g_vec
-        omega_N,amp = closest_key_entry(planet_ecc_fmft[pl],omega)
+        if k[s_conserved_idx] != 0:
+            continue
+        omega = k @ omega_vec
+        omega_N,amp = closest_key_entry(planet_fmft[pl],omega)
         omega_error = np.abs(omega_N/omega-1)
         omega_error_pct = np.abs((omega_N - omega)/omega)
         if omega_error<1e-4:# and omega_error_pct < 0.01:
@@ -451,27 +542,19 @@ for pl in planets + ("Asteroid",):
             comb[tuple(k)] = amp
     combs.append(comb)
 # %%
-# for pl in combs:
-#     to_del = []
-#     for comb in pl.keys():
-#         if comb != (-1, 2, 0, 0, 0):
-#             to_del.append(comb)
-#     for d in to_del:
-#         del pl[d]
-# %%
-x_val = Phi
-x = [sympy.Symbol("X_"+str(i)) for i in range(N)]
-x_bar_0 = [sympy.Symbol("\\bar X^{(0)}_"+str(i)) for i in range(N)]
+x_val = Psi
+x = [sympy.Symbol("X_"+str(i)) for i in range(N*2)]
+x_bar_0 = [sympy.Symbol("\\bar X^{(0)}_"+str(i)) for i in range(N*2)]
 
 x_bars = [x_bar_0]
-subs = {x_bar_0[i]: x[i] for i in range(N)}
-x_val_subs = {x[i]: x_val[:, i] for i in range(N)}
+subs = {x_bar_0[i]: x[i] for i in range(N*2)}
+x_val_subs = {x[i]: x_val[:, i] for i in range(N*2)}
 
 iterations = 1
 for i in range(1, iterations+1):
-    x_bar_i = [sympy.Symbol(f"\\bar X^{{({i})}}_"+str(j)) for j in range(N)]
+    x_bar_i = [sympy.Symbol(f"\\bar X^{{({i})}}_"+str(j)) for j in range(N*2)]
     # loop through each object
-    for j in range(N):
+    for j in range(N*2):
         # to first order the coordinate is the original coordinate
         x_bar_i_j = x_bars[-1][j]
         # correct for each combination
@@ -481,27 +564,37 @@ for i in range(1, iterations+1):
             for k_idx in range(N):
                 # add each object the correct number of times
                 for l in range(np.abs(k[k_idx])):
-                    term *= x_bars[-1][k_idx]/g_amp[k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()/np.conj(g_amp[k_idx])
+                    term *= x_bars[-1][k_idx]/omega_amp[k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()/np.conj(omega_amp[k_idx])
             x_bar_i_j -= term
         subs[x_bar_i[j]] = x_bar_i_j
     x_bars.append(x_bar_i)
 
 x_bar_n = x_bars[-1]
 for i in range(iterations+1):
-    for j in range(N):
+    for j in range(N*2):
         x_bar_n[j] = x_bar_n[j].subs(subs)
 x_bar_n
 # %%
-Phi_second_order = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N)])
-_ = planet_fmft(base_sim['time'], Phi_second_order, display=True)
+Psi_second_order = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N*2)])
+planet_fmft = {}
+for i,pl in enumerate(psi_planet_list):
+    planet_fmft[pl] = fmft(base_sim['time'], Psi_second_order[i], 14)
+
+    planet_freqs = np.array(list(planet_fmft[pl].keys()))
+
+    print("")
+    print(pl)
+    print("-------")
+    for f in planet_freqs[:8]:
+        print("{:+07.3f} \t {:0.8f}".format(f * TO_ARCSEC_PER_YEAR, np.abs(planet_fmft[pl][f])))
 # %%
-fig, axs = plt.subplots(2,5,figsize=(15, 5))
-for i, pl in enumerate(planets + ('Asteroid',)):
+fig, axs = plt.subplots(2,2*N,figsize=(30, 5))
+for i, pl in enumerate(psi_planet_list):
     axs[0][i].set_title(pl)
-    pts = Phi[i]
+    pts = Psi[i]
     axs[0][i].plot(np.real(pts), np.imag(pts))
     axs[0][i].set_aspect('equal')
-    pts = Phi_second_order[i]
+    pts = Psi_second_order[i]
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%

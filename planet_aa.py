@@ -327,10 +327,10 @@ planet_ecc_fmft = planet_fmft(sim['time'], Phi, display=True)
 from multiprocessing import Pool
 
 full_sim_end_time = full_sim['time'][-1]
-segment_len = int(10e6) / TO_YEAR
+segment_len = int(3e6) / TO_YEAR
 segments = np.arange(0, full_sim_end_time, segment_len)
 pts_per_segment = 4096
-tmp_dir = dataset_path/'tmp3'
+tmp_dir = dataset_path/'tmp4'
 tmp_dir.mkdir(exist_ok=True, parents=True)
 
 
@@ -393,17 +393,17 @@ Phi_segments_comb = np.concat(Phi_segments, axis=1)
 M_segments = np.array(M_segments)
 # %%
 x_plt = full_sim['time'] * TO_YEAR / 1e6
-plt.plot(x_plt, np.abs(full_sim['x'][0]), label="orig")
-plt.plot(x_plt, np.abs(Phi_full[0]), label="train whole")
-plt.plot(x_plt, np.abs(Phi_segments_comb[0]), label="train 10 Myr")
+# plt.plot(x_plt, np.abs(full_sim['x'][0]), label="orig")
+# plt.plot(x_plt, np.abs(Phi_full[0]), label="train whole")
+# plt.plot(x_plt, np.abs(Phi_segments_comb[0]), label="train 2 Myr")
 
-# prev_rng = [-1]
-# for seg in Phi_segments:
-#     rng = np.arange(prev_rng[-1]+1, prev_rng[-1]+len(seg[0])+1)
-#     plt.plot(full_sim['time'][rng] * TO_YEAR/1e6, np.abs(seg[0]))
-#     prev_rng = rng
+prev_rng = [-1]
+for seg in Phi_segments:
+    rng = np.arange(prev_rng[-1]+1, prev_rng[-1]+len(seg[0])+1)
+    plt.plot(full_sim['time'][rng] * TO_YEAR/1e6, np.abs(seg[0]))
+    prev_rng = rng
 
-plt.xlim(0, 20)
+# plt.xlim(0, 20)
 
 plt.xlabel("Myr")
 plt.legend()
@@ -421,4 +421,57 @@ sc.fit(M_segments_flat)
 pca = PCA(n_components=5)
 pca.fit(sc.transform(M_segments_flat))
 plt.plot(pca.transform(sc.transform(M_segments_flat)))
+# %%
+def run(segment_start):
+    sim = load_sim(tmp_dir/f"segment_{segment_start}.sa")
+    return sim, planet_fmft(sim['time'], sim['x'])
+
+with Pool(50) as pool:
+    sims, fmfts = zip(*list(tqdm(pool.imap(run, segments), total=len(segments))))
+# %%
+top_freqs = np.array([5.11, 4.24, 7.31, 6.17]) / TO_ARCSEC_PER_YEAR
+amp = []
+freq = []
+a = []
+for i in range(len(fmfts)):
+    amp.append([])
+    freq.append([])
+    a.append(np.mean(sims[i]['a'][0]))
+
+    for f_ in top_freqs:
+        f, a_ = closest_key_entry(fmfts[i]['Mercury'],f_)
+        freq[-1].append(f)
+        amp[-1].append(a_)
+
+amp = np.array(amp)
+freq = np.array(freq) * TO_ARCSEC_PER_YEAR
+# %%
+for i in range(freq.shape[0]):
+    plt.scatter(np.ones_like(top_freqs) * i, freq[0], alpha=np.abs(amp[0])/np.linalg.norm(np.abs(amp[0])))
+# %%
+plt.plot(freq[:,0])
+# plt.ylim(4.5, 5.5)
+# %%
+plt.scatter(freq[:,0], freq[:,1])
+# plt.scatter(a, freq[:,1])
+# plt.xlim(4.5, 5.5)
+# %%
+from scipy.signal import ShortTimeFFT
+from scipy.signal.windows import gaussian
+
+N = full_sim['time'].shape[0]
+T_x = np.mean(np.gradient(full_sim['time'])) * TO_YEAR
+w = gaussian(500, std=8, sym=True)
+SFT = ShortTimeFFT(w, hop=10, fs=1/T_x, scale_to='magnitude', fft_mode='centered')
+Sx = SFT.stft(full_sim['x'][0])
+
+extent = np.array(SFT.extent(N))
+extent[:2] = extent[:2] * 1e-6
+extent[2:] = extent[2:] * TO_ARCSEC_PER_YEAR
+
+plt.imshow(abs(Sx), origin='lower', aspect='auto', extent=extent, cmap='viridis')
+plt.ylim(bottom=0)
+
+plt.xlabel("Myr")
+plt.ylabel("''/yr")
 # %%
