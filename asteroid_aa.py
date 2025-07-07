@@ -41,7 +41,7 @@ def closest_key_entry(d, target):
         The (key, value) pair whose key is closest to `target`.
     """
     closest_key = min(d.keys(), key=lambda k: abs(k - target))
-    return closest_key, d[closest_key]
+    return closest_key, d[closest_key] * np.sign(closest_key)
 # %%
 dataset_path = Path('datasets') / 'asteroid_integration' / 'outer_planets'
 base_desn = '00001'
@@ -442,11 +442,11 @@ for i,pl in enumerate(planets + ("Asteroid",)):
     print(pl)
     print("-------")
     for g in planet_e_freqs[:8]:
-        print("{:+07.3f} \t {:0.8f}".format(g * TO_ARCSEC_PER_YEAR, np.abs(planet_ecc_fmft[pl][g])))
+        print(f"{g * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_ecc_fmft[pl][g]):0.8f} ∢{np.angle(planet_ecc_fmft[pl][g]):.2f}")
     print("s")
     print("-------")
     for s in planet_i_freqs[:4]:
-        print("{:+07.3f} \t {:0.6f}".format(s * TO_ARCSEC_PER_YEAR, np.abs(planet_inc_fmft[pl][s])))
+        print(f"{s * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_inc_fmft[pl][s]):0.6f} ∢{np.angle(planet_inc_fmft[pl][s]):.2f}")
     
     # return planet_ecc_fmft, planet_inc_fmft
 
@@ -493,21 +493,28 @@ print(omega_amp)
 base_planet_list = planets + ("Asteroid",)
 psi_planet_list = (tuple(map(lambda pl: pl+"_X", base_planet_list)) + tuple(map(lambda pl: pl+"_Y", base_planet_list)))
 Psi = np.concat([Phi, Theta], axis=0)
-planet_fmft = {}
-for i,pl in enumerate(psi_planet_list):
-    planet_fmft[pl] = fmft(base_sim['time'], Psi[i], 14)
+def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None):
+    planet_fmft = {}
+    for i,pl in enumerate(pl_list):
+        fmft_res = fmft(time, X[i], N)
+        fmft_res = dict((key*np.sign(key), value*np.sign(key)) for (key, value) in fmft_res.items())
+        planet_fmft[pl] = fmft_res
+        planet_freqs = np.array(list(planet_fmft[pl].keys()))
+        
+        if display:
+            print("")
+            print(pl)
+            print("-------")
+            for i,f in enumerate(planet_freqs):
+                print(f"{f * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_fmft[pl][f]):0.8f}  ∢{np.angle(planet_fmft[pl][f]):.2f}", end='')
+                if compareto:
+                    ctf = list(compareto[pl].keys())[i]
+                    print(f"\t\t{ctf * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(compareto[pl][ctf]):0.8f}  ∢{np.angle(compareto[pl][ctf]):.2f}", end='')
+                print()
+    return planet_fmft
+planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi, N=14, display=True)
 # %%
 possible_k = []
-# SECOND ORDER
-for a in range(N*2):
-    for b in range(a+1, N*2):
-        if a == b:
-            continue
-        k = np.zeros(N*2, dtype=int)
-        k[a] += 1
-        k[b] -= 1
-        possible_k.append(k)
-
 # THIRD ORDER
 for a in range(N*2):
     for b in range(a,N*2):
@@ -521,15 +528,43 @@ for a in range(N*2):
             k[b] +=1
             k[c] -=1
             possible_k.append(k)
-
+# FIFTH ORDER
+# for a in range(N*2):
+#     for b in range(a,N*2):
+#         for c in range(b, N*2):
+#             for d in range(N*2):
+#                 for e in range(d,N*2):
+#                     if d==a or d==b or d==c:
+#                         continue
+#                     if e==a or e==b or e==c:
+#                         continue
+#                     k = np.zeros(N*2, dtype=int)
+#                     k[a] +=1
+#                     k[b] +=1
+#                     k[c] +=1
+#                     k[d] -=1
+#                     k[e] -=1
+#                     possible_k.append(k)
 possible_k = np.array(possible_k)
 # %%
 combs = []
-for pl in psi_planet_list:
-    print(f"{pl} \t base freq: {np.abs(list(planet_fmft[pl].items())[0][1]):.3f}") 
+for i,pl in enumerate(psi_planet_list):
+    print()
+    print(f"{pl} \t base amp: {np.abs(list(planet_fmft[pl].items())[0][1]):.2g}") 
     print("-"*len(pl))
     print("kvec \t\t\t\t\t omega \t err. \t amplitude")
     comb = {}
+    # FIRST ORDER
+    for k in np.eye(2*N, dtype=int):
+        if k[i] == 1:
+            continue
+        omega = k @ omega_vec
+        omega_N,amp = closest_key_entry(planet_fmft[pl],omega)
+        omega_error = np.abs(omega_N/omega-1)
+        omega_error_pct = np.abs((omega_N - omega)/omega)
+        if omega_error<1e-4:# and omega_error_pct < 0.01:
+            print (k,"\t\t\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
+            comb[tuple(k)] = amp
     for k in possible_k:
         if k[s_conserved_idx] != 0:
             continue
@@ -576,17 +611,7 @@ for i in range(iterations+1):
 x_bar_n
 # %%
 Psi_second_order = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N*2)])
-planet_fmft = {}
-for i,pl in enumerate(psi_planet_list):
-    planet_fmft[pl] = fmft(base_sim['time'], Psi_second_order[i], 14)
-
-    planet_freqs = np.array(list(planet_fmft[pl].keys()))
-
-    print("")
-    print(pl)
-    print("-------")
-    for f in planet_freqs[:8]:
-        print("{:+07.3f} \t {:0.8f}".format(f * TO_ARCSEC_PER_YEAR, np.abs(planet_fmft[pl][f])))
+planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi_second_order, N=14, display=True, compareto=planet_fmft)
 # %%
 fig, axs = plt.subplots(2,2*N,figsize=(30, 5))
 for i, pl in enumerate(psi_planet_list):
