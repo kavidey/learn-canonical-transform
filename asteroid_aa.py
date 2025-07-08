@@ -42,6 +42,15 @@ def closest_key_entry(d, target):
     """
     closest_key = min(d.keys(), key=lambda k: abs(k - target))
     return closest_key, d[closest_key] * np.sign(closest_key)
+
+def symmetrize_axes(axes):
+    y_max = np.max(np.abs(axes.get_ylim()))
+    x_max = np.max(np.abs(axes.get_xlim()))
+
+    ax_max = np.max([x_max, y_max])
+
+    axes.set_ylim(ymin=-ax_max, ymax=ax_max)
+    axes.set_xlim(xmin=-ax_max, xmax=ax_max)
 # %%
 dataset_path = Path('datasets') / 'asteroid_integration' / 'outer_planets'
 base_desn = '00001'
@@ -393,6 +402,7 @@ for i, pl in enumerate(planets + ('Asteroid',)):
 # %%
 N = sim['y'].shape[0]
 Y = jnp.concatenate((sim['y'], -1j*np.conj(sim['y'])), axis=0)
+Y = np.conj(Y)
 
 def objective(M, J, Y):
     M = jnp.reshape(M, (N*2, N*2))
@@ -427,13 +437,11 @@ for i, pl in enumerate(planets + ('Asteroid',)):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
-# def planet_fmft(time, x, y, N=14, display=False):
 planet_ecc_fmft = {}
 planet_inc_fmft = {}
 for i,pl in enumerate(planets + ("Asteroid",)):
     planet_ecc_fmft[pl] = fmft(base_sim['time'],Phi[i],14)
     planet_e_freqs = np.array(list(planet_ecc_fmft[pl].keys()))
-
 
     planet_inc_fmft[pl] = fmft(base_sim['time'],Theta[i],14)
     planet_i_freqs = np.array(list(planet_inc_fmft[pl].keys()))
@@ -497,7 +505,6 @@ def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None):
     planet_fmft = {}
     for i,pl in enumerate(pl_list):
         fmft_res = fmft(time, X[i], N)
-        fmft_res = dict((key*np.sign(key), value*np.sign(key)) for (key, value) in fmft_res.items())
         planet_fmft[pl] = fmft_res
         planet_freqs = np.array(list(planet_fmft[pl].keys()))
         
@@ -514,68 +521,92 @@ def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None):
     return planet_fmft
 planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi, N=14, display=True)
 # %%
-possible_k = []
-# THIRD ORDER
-for a in range(N*2):
-    for b in range(a,N*2):
-        for c in range(N*2):
-            if c==a:
-                continue
-            if c==b:
+def get_k_vecs(order, pl_idx, s_conserved_idx, N):
+    assert order % 2 == 1, "Order must be odd"
+    possible_k = []
+
+    # FIRST ORDER
+    if order == 1:
+        for a in range(N*2):
+            if a == pl_idx:
                 continue
             k = np.zeros(N*2, dtype=int)
-            k[a] +=1
-            k[b] +=1
-            k[c] -=1
+            k[a] = 1
             possible_k.append(k)
-# FIFTH ORDER
-# for a in range(N*2):
-#     for b in range(a,N*2):
-#         for c in range(b, N*2):
-#             for d in range(N*2):
-#                 for e in range(d,N*2):
-#                     if d==a or d==b or d==c:
-#                         continue
-#                     if e==a or e==b or e==c:
-#                         continue
-#                     k = np.zeros(N*2, dtype=int)
-#                     k[a] +=1
-#                     k[b] +=1
-#                     k[c] +=1
-#                     k[d] -=1
-#                     k[e] -=1
-#                     possible_k.append(k)
-possible_k = np.array(possible_k)
+    
+    # THIRD ORDER
+    if order == 3:
+        for a in range(N*2):
+            for b in range(a,N*2):
+                for c in range(N*2):
+                    if c==a:
+                        continue
+                    if c==b:
+                        continue
+                    k = np.zeros(N*2, dtype=int)
+                    k[a] +=1
+                    k[b] +=1
+                    k[c] -=1
+                    if k[s_conserved_idx] != 0:
+                        continue
+                    possible_k.append(k)
+    
+    # FIFTH ORDER
+    if order == 5:
+        for a in range(N*2):
+            for b in range(a,N*2):
+                for c in range(b, N*2):
+                    for d in range(N*2):
+                        for e in range(d,N*2):
+                            if d==a or d==b or d==c:
+                                continue
+                            if e==a or e==b or e==c:
+                                continue
+                            k = np.zeros(N*2, dtype=int)
+                            k[a] +=1
+                            k[b] +=1
+                            k[c] +=1
+                            k[d] -=1
+                            k[e] -=1
+                            if k[s_conserved_idx] != 0:
+                                continue
+                            possible_k.append(k)
+    possible_k = np.array(possible_k)
+    return possible_k
 # %%
-combs = []
-for i,pl in enumerate(psi_planet_list):
-    print()
-    print(f"{pl} \t base amp: {np.abs(list(planet_fmft[pl].items())[0][1]):.2g}") 
-    print("-"*len(pl))
-    print("kvec \t\t\t\t\t omega \t err. \t amplitude")
-    comb = {}
-    # FIRST ORDER
-    for k in np.eye(2*N, dtype=int):
-        if k[i] == 1:
-            continue
-        omega = k @ omega_vec
-        omega_N,amp = closest_key_entry(planet_fmft[pl],omega)
-        omega_error = np.abs(omega_N/omega-1)
-        omega_error_pct = np.abs((omega_N - omega)/omega)
-        if omega_error<1e-4:# and omega_error_pct < 0.01:
-            print (k,"\t\t\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
-            comb[tuple(k)] = amp
-    for k in possible_k:
-        if k[s_conserved_idx] != 0:
-            continue
-        omega = k @ omega_vec
-        omega_N,amp = closest_key_entry(planet_fmft[pl],omega)
-        omega_error = np.abs(omega_N/omega-1)
-        omega_error_pct = np.abs((omega_N - omega)/omega)
-        if omega_error<1e-4:# and omega_error_pct < 0.01:
-            print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
-            comb[tuple(k)] = amp
-    combs.append(comb)
+def get_combs(order, pl_fmft, pl_list, omega_vec, display=False):
+    combs = []
+    for i,pl in enumerate(pl_list):
+        if display:
+            print()
+            print(f"{pl} \t base amp: {np.abs(list(pl_fmft[pl].items())[0][1]):.2g}") 
+            print("-"*len(pl))
+            print("kvec \t\t\t\t\t omega \t err. \t amplitude")
+        comb = {}
+        for k in get_k_vecs(order, i, s_conserved_idx, N):
+            omega = k @ np.abs(omega_vec)
+            omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
+            omega_error = np.abs(omega_N/omega-1)
+            if omega_error<1e-4:
+                print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
+                comb[tuple(k)] = (False, amp)
+            # else:
+            #     omega *= -1
+            #     omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
+            #     omega_error = np.abs(omega_N/omega-1)
+            #     if omega_error<1e-4:
+            #         print ("inv", -k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
+            #         comb[tuple(k)] = (True, amp)
+        combs.append(comb)
+    return combs
+# %%
+def eval_transform(x, x_bars, subs, x_val, num_iter):
+    x_bar_n = x_bars[-1]
+    for i in range(num_iter+1):
+        for j in range(N*2):
+            x_bar_n[j] = x_bar_n[j].subs(subs)
+    x_trans = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N*2)])
+    return x_trans, x_bar_n
 # %%
 x_val = Psi
 x = [sympy.Symbol("X_"+str(i)) for i in range(N*2)]
@@ -585,18 +616,27 @@ x_bars = [x_bar_0]
 subs = {x_bar_0[i]: x[i] for i in range(N*2)}
 x_val_subs = {x[i]: x_val[:, i] for i in range(N*2)}
 
-iterations = 1
-for i in range(1, iterations+1):
+# iterations = [1]
+# iterations = [3]
+# iterations = [1,3]
+iterations = [1,3,5]
+for i,order in enumerate(iterations):
+    print("#"*10, f"ITERATION {i} - ORDER {order}", "#"*10)
+    last_x_val, _ = eval_transform(x, x_bars, subs, x_val, i)
+    last_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], last_x_val, 14, display=False)
+    combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True)
+
     x_bar_i = [sympy.Symbol(f"\\bar X^{{({i})}}_"+str(j)) for j in range(N*2)]
+
     # loop through each object
     for j in range(N*2):
         # to first order the coordinate is the original coordinate
         x_bar_i_j = x_bars[-1][j]
         # correct for each combination
-        for k,amp in combs[j].items():
-            term = amp
+        for k,comb in combs[j].items():
+            inverted, term = comb
             # loop through each object
-            for k_idx in range(N):
+            for k_idx in range(N*2):
                 # add each object the correct number of times
                 for l in range(np.abs(k[k_idx])):
                     term *= x_bars[-1][k_idx]/omega_amp[k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()/np.conj(omega_amp[k_idx])
@@ -604,14 +644,10 @@ for i in range(1, iterations+1):
         subs[x_bar_i[j]] = x_bar_i_j
     x_bars.append(x_bar_i)
 
-x_bar_n = x_bars[-1]
-for i in range(iterations+1):
-    for j in range(N*2):
-        x_bar_n[j] = x_bar_n[j].subs(subs)
-x_bar_n
+Psi_trans, x_bar_n = eval_transform(x, x_bars, subs, x_val, len(iterations))
+# x_bar_n
 # %%
-Psi_second_order = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N*2)])
-planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi_second_order, N=14, display=True, compareto=planet_fmft)
+new_planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi_trans, N=14, display=True, compareto=planet_fmft)
 # %%
 fig, axs = plt.subplots(2,2*N,figsize=(30, 5))
 for i, pl in enumerate(psi_planet_list):
@@ -619,9 +655,11 @@ for i, pl in enumerate(psi_planet_list):
     pts = Psi[i]
     axs[0][i].plot(np.real(pts), np.imag(pts))
     axs[0][i].set_aspect('equal')
-    pts = Psi_second_order[i]
+    # symmetrize_axes(axs[0][i])
+    pts = Psi_trans[i]
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
+    # symmetrize_axes(axs[1][i])
 # %%
 # sol = minimize(objective, inc_rotation_matrix_T.reshape(-1), args=(sim['F'], masses), options={'gtol': 1e-8, 'disp': True})
 # inc_rotation_matrix_opt_T = sol.x.reshape(5,5)
