@@ -304,10 +304,15 @@ def objective(R, G, m):
 
     J_approx = jnp.abs(Phi).mean(axis=1)
     J_loss = ((jnp.abs(Phi) - J_approx[..., None]) ** 2).sum()
+    
+    # norm_phi = jnp.real(Phi/J_approx[..., None])
+    # orthog_loss = (((norm_phi @ norm_phi.T) * (jnp.ones((5,5))-jnp.eye(5))) ** 2).sum()
+
     off_diag_weight = 1 / jnp.pow(jnp.outer(J_approx, J_approx), 1/4)
     off_diag_loss = (((jnp.ones((5,5))-jnp.eye(5)) * R.T * off_diag_weight) ** 2).sum()
 
-    loss = rotation_loss + J_loss + off_diag_loss * 1e-10
+    loss = rotation_loss + J_loss + off_diag_loss * 1e-10 #+ orthog_loss * 1e-6
+    # loss = rotation_loss + J_loss + off_diag_loss * 1e-10 + orthog_loss * 1e-6
     return loss
 
 obj_and_grad = jax.jit(jax.value_and_grad(lambda R: objective(R, sim['x'], masses)))
@@ -354,7 +359,6 @@ for x in (sim['x'], Phi):
     # plt.plot(norm_phi.T)
 
     print(norm_phi @ norm_phi.T)
-# %%
 # %%
 N = sim['x'].shape[0]
 X = jnp.concatenate((sim['x'], -1j*np.conj(sim['x'])), axis=0)
@@ -469,21 +473,21 @@ for i, pl in enumerate(planets + ('Asteroid',)):
 planet_ecc_fmft = {}
 planet_inc_fmft = {}
 for i,pl in enumerate(planets + ("Asteroid",)):
-    planet_ecc_fmft[pl] = fmft(base_sim['time'],Phi[i],14)
+    planet_ecc_fmft[pl] = fmft(t,Phi[i],14)
     planet_e_freqs = np.array(list(planet_ecc_fmft[pl].keys()))
 
-    planet_inc_fmft[pl] = fmft(base_sim['time'],Theta[i],14)
-    planet_i_freqs = np.array(list(planet_inc_fmft[pl].keys()))
+    # planet_inc_fmft[pl] = fmft(base_sim['time'],Theta[i],14)
+    # planet_i_freqs = np.array(list(planet_inc_fmft[pl].keys()))
 
     print("")
     print(pl)
     print("-------")
     for g in planet_e_freqs[:8]:
         print(f"{g * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_ecc_fmft[pl][g]):0.8f} ∢{np.angle(planet_ecc_fmft[pl][g]):.2f}")
-    print("s")
-    print("-------")
-    for s in planet_i_freqs[:4]:
-        print(f"{s * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_inc_fmft[pl][s]):0.6f} ∢{np.angle(planet_inc_fmft[pl][s]):.2f}")
+    # print("s")
+    # print("-------")
+    # for s in planet_i_freqs[:4]:
+    #     print(f"{s * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_inc_fmft[pl][s]):0.6f} ∢{np.angle(planet_inc_fmft[pl][s]):.2f}")
     
     # return planet_ecc_fmft, planet_inc_fmft
 
