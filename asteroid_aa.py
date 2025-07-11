@@ -601,13 +601,13 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
             print("kvec \t\t\t\t\t omega \t err. \t amplitude")
         comb = {}
         for k in get_k_vecs(order, i, s_conserved_idx, N, include_negative=include_negative):
-            omega = k @ np.abs(omega_vec)
+            omega = k @ omega_vec
             # print(omega*TO_ARCSEC_PER_YEAR, k)
             omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
             omega_error = np.abs(omega_N/omega-1)
             if omega_error<1e-4:
                 print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
-                comb[tuple(k)] = (False, amp)
+                comb[tuple(k)] = (amp, omega_N)
         combs.append(comb)
     return combs
 # %%
@@ -629,8 +629,8 @@ x_val_subs = {x[i]: x_val[:, i] for i in range(N*2)}
 
 # iterations = [1]
 # iterations = [3]
-# iterations = [1,3]
-iterations = [1,3,5]
+iterations = [1,3]
+# iterations = [1,3,5]
 for i,order in enumerate(iterations):
     print("#"*10, f"ITERATION {i} - ORDER {order}", "#"*10)
     last_x_val, _ = eval_transform(x, x_bars, subs, x_val, i)
@@ -644,21 +644,30 @@ for i,order in enumerate(iterations):
         # to first order the coordinate is the original coordinate
         x_bar_i_j = x_bars[-1][j]
         # correct for each combination
-        for k,comb in combs[j].items():
-            inverted, term = comb
+        for k,(amp, omega) in combs[j].items():
+            term = amp
             # loop through each object
             for k_idx in range(N*2):
                 # add each object the correct number of times
                 for l in range(np.abs(k[k_idx])):
                     term *= x_bars[-1][k_idx]/omega_amp[k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()/np.conj(omega_amp[k_idx])
-            x_bar_i_j -= term
+            if omega > 0:
+                x_bar_i_j -= term
+            else:
+                x_bar_i_j += term
         subs[x_bar_i[j]] = x_bar_i_j
     x_bars.append(x_bar_i)
 
 Psi_trans, x_bar_n = eval_transform(x, x_bars, subs, x_val, len(iterations))
 # x_bar_n
 # %%
-new_planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi_trans, N=14, display=True, compareto=planet_fmft)
+import scipy.signal
+b, a = scipy.signal.butter(10, 100, 'low', fs=(TO_ARCSEC_PER_YEAR / np.gradient(sim['time']).mean()) * 2 * np.pi) # type: ignore[reportUnknownVariableType]
+# Psi_filt = scipy.signal.lfilter(b, a, Psi_trans)
+Psi_filt = Psi_trans
+# plt.plot(np.real(Psi_filt[3]), np.imag(Psi_filt[3]))
+# %%
+new_planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi_filt, N=14, display=True, compareto=planet_fmft)
 # %%
 fig, axs = plt.subplots(2,2*N,figsize=(30, 5))
 for i, pl in enumerate(psi_planet_list):
@@ -667,8 +676,8 @@ for i, pl in enumerate(psi_planet_list):
     axs[0][i].plot(np.real(pts), np.imag(pts))
     axs[0][i].set_aspect('equal')
     # symmetrize_axes(axs[0][i])
-    pts = Psi_trans[i]
-    axs[1][i].plot(np.real(pts), np.imag(pts))
+    pts = Psi_filt[i]
+    axs[1][i].plot(np.real(pts)[100:], np.imag(pts)[100:])
     axs[1][i].set_aspect('equal')
     # symmetrize_axes(axs[1][i])
 # %%
