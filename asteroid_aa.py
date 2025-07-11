@@ -62,6 +62,7 @@ desns = sorted(desns)
 # %%
 rb_sim = rb.Simulation(str(dataset_path/'planets.bin'))
 masses = np.array(list(map(lambda ps: ps.m, rb_sim.particles))[1:] + [1e-11], dtype=np.float64)
+N = len(masses)
 
 def load_sim(desn):
     results = get_simarchive_integration_results(str(dataset_path / f"{'_'.join(sims[0].stem.split('_')[:-1])}_{desn}.sa"), coordinates='heliocentric')
@@ -338,80 +339,61 @@ for i, pl in enumerate(planets + ('Asteroid',)):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
-a = sim['x'][3][:1000]
-a /= np.abs(a).mean()
-b = sim['x'][4][:1000]
-b /= np.abs(b).mean()
-plt.plot(np.real(a))
-plt.plot(np.real(b))
-plt.plot(np.real(a)*np.real(b))
-# plt.plot(np.abs(a*b))
-# plt.plot(np.abs(a*a))
-# plt.ylim(bottom=0)
+# N = sim['x'].shape[0]
+# X = jnp.concatenate((sim['x'], -1j*np.conj(sim['x'])), axis=0)
+# J = jnp.block([[np.zeros((N, N)), np.eye(N)], [-np.eye(N), np.zeros((N, N))]])
 
-# print(np.abs(a) @ np.abs(a))
-np.real(a)@np.real(a), np.real(a)@np.real(b)
-# %%
-for x in (sim['x'], Phi):
-    J_approx = jnp.abs(x).mean(axis=1)
-    norm_phi = jnp.real(x/J_approx[..., None])
-    # norm_phi -= norm_phi.mean(axis=1)[..., None]
-    # plt.plot(norm_phi.T)
-
-    print(norm_phi @ norm_phi.T)
-# %%
-N = sim['x'].shape[0]
-X = jnp.concatenate((sim['x'], -1j*np.conj(sim['x'])), axis=0)
-J = jnp.block([[np.zeros((N, N)), np.eye(N)], [-np.eye(N), np.zeros((N, N))]])
-
-def objective(M, J, X):
-    M = jnp.reshape(M, (N*2, N*2))
+# def objective(M, J, X):
+#     M = jnp.reshape(M, (N*2, N*2))
     
-    symplectic_loss = ((M.T @ J @ M - J)**2).sum()
+#     symplectic_loss = ((M.T @ J @ M - J)**2).sum()
 
-    Phi = M.T @ X
-    J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2) #/ jnp.abs(Phi).mean(axis=1)[..., None]
-    J_loss = J_loss.sum()
-    # J_loss = J_loss[-2].sum()
+#     Phi = M.T @ X
+#     J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2) #/ jnp.abs(Phi).mean(axis=1)[..., None]
+#     J_loss = J_loss.sum()
+#     # J_loss = J_loss[-2].sum()
     
-    off_diag_loss = (((jnp.ones((N*2,N*2))-jnp.eye(N*2)) * M) ** 2).sum()
+#     off_diag_loss = (((jnp.ones((N*2,N*2))-jnp.eye(N*2)) * M) ** 2).sum()
     
-    loss = symplectic_loss + J_loss*10 + off_diag_loss*0.05
-    return loss
-obj_and_grad = jax.jit(jax.value_and_grad(lambda M: objective(M, J, X)))
+#     loss = symplectic_loss + J_loss*10 + off_diag_loss*0.05
+#     return loss
+# obj_and_grad = jax.jit(jax.value_and_grad(lambda M: objective(M, J, X)))
 
-np.random.seed(0)
-# initial = np.eye(2*N) + np.random.normal(0, 0.1, (N*2, N*2))
-initial = jnp.block([[ecc_rotation_matrix_T, np.zeros((N, N))], [np.zeros((N, N)), ecc_rotation_matrix_T]])
-initial += np.random.normal(0, 0.05, (N*2, N*2))
-sol = minimize(obj_and_grad, initial.reshape(-1), options={'gtol': 1e-8, 'disp': True}, jac=True)
-ecc_rotation_matrix_opt_T = sol.x.reshape((N*2, N*2))
+# np.random.seed(0)
+# # initial = np.eye(2*N) + np.random.normal(0, 0.1, (N*2, N*2))
+# initial = jnp.block([[ecc_rotation_matrix_T, np.zeros((N, N))], [np.zeros((N, N)), ecc_rotation_matrix_T]])
+# initial += np.random.normal(0, 0.05, (N*2, N*2))
+# sol = minimize(obj_and_grad, initial.reshape(-1), options={'gtol': 1e-8, 'disp': True}, jac=True)
+# ecc_rotation_matrix_opt_T = sol.x.reshape((N*2, N*2))
 
-# print(ecc_rotation_matrix_opt_T.T @ J @ ecc_rotation_matrix_opt_T)
-print(ecc_rotation_matrix_opt_T)
-Phi = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ X)[:N]
+# # print(ecc_rotation_matrix_opt_T.T @ J @ ecc_rotation_matrix_opt_T)
+# print(ecc_rotation_matrix_opt_T)
+# Phi = (np.linalg.inv(ecc_rotation_matrix_opt_T) @ X)[:N]
 
-fig, axs = plt.subplots(2,5,figsize=(15, 5))
-for i, pl in enumerate(planets + ('Asteroid',)):
-    axs[0][i].set_title(pl)
-    pts = sim['x'][i]
-    axs[0][i].plot(np.real(pts), np.imag(pts))
-    axs[0][i].set_aspect('equal')
-    pts = Phi[i]
-    axs[1][i].plot(np.real(pts), np.imag(pts))
-    axs[1][i].set_aspect('equal')
+# fig, axs = plt.subplots(2,5,figsize=(15, 5))
+# for i, pl in enumerate(planets + ('Asteroid',)):
+#     axs[0][i].set_title(pl)
+#     pts = sim['x'][i]
+#     axs[0][i].plot(np.real(pts), np.imag(pts))
+#     axs[0][i].set_aspect('equal')
+#     pts = Phi[i]
+#     axs[1][i].plot(np.real(pts), np.imag(pts))
+#     axs[1][i].set_aspect('equal')
 # %%
 def objective(R, G, m):
     R = jnp.reshape(R, (5,5))
 
-    rotation_loss = ((jnp.eye(5) - R @ R.T) ** 2).sum() #+ (np.linalg.det(R) - 1) ** 2
+    rotation_loss = ((jnp.eye(5) - R @ R.T) ** 2).sum()# + (jnp.linalg.det(R) - 1) ** 2
 
     Phi = R.T @ G
 
-    J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2) / jnp.abs(Phi).mean(axis=1)[..., None]
-    J_loss = J_loss.sum()
+    J_approx = jnp.abs(Phi).mean(axis=1)
+    J_loss = ((jnp.abs(Phi) - J_approx[..., None]) ** 2).sum()
 
-    loss = rotation_loss + J_loss * 0.1
+    off_diag_weight = 1 / jnp.pow(jnp.outer(J_approx, J_approx), 1/4)
+    off_diag_loss = (((jnp.ones((5,5))-jnp.eye(5)) * R.T * off_diag_weight) ** 2).sum()
+
+    loss = rotation_loss + J_loss + off_diag_loss * 1e-10
     return loss
 
 obj_and_grad = jax.jit(jax.value_and_grad(lambda R: objective(R, sim['y'], masses)))
@@ -434,60 +416,60 @@ for i, pl in enumerate(planets + ('Asteroid',)):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
-N = sim['y'].shape[0]
-Y = jnp.concatenate((sim['y'], -1j*np.conj(sim['y'])), axis=0)
+# N = sim['y'].shape[0]
+# Y = jnp.concatenate((sim['y'], -1j*np.conj(sim['y'])), axis=0)
 
-def objective(M, J, Y):
-    M = jnp.reshape(M, (N*2, N*2))
+# def objective(M, J, Y):
+#     M = jnp.reshape(M, (N*2, N*2))
     
-    symplectic_loss = ((M.T @ J @ M - J)**2).sum()
+#     symplectic_loss = ((M.T @ J @ M - J)**2).sum()
 
-    Phi = M.T @ Y
-    J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2)
-    J_loss = J_loss.sum()
-    # J_loss = (J_loss / jnp.pow(jnp.concat((masses, masses))[..., None], 1/4)).sum()
+#     Phi = M.T @ Y
+#     J_loss = ((jnp.abs(Phi) - jnp.abs(Phi).mean(axis=1)[..., None]) ** 2)
+#     J_loss = J_loss.sum()
+#     # J_loss = (J_loss / jnp.pow(jnp.concat((masses, masses))[..., None], 1/4)).sum()
     
-    loss = symplectic_loss + J_loss * 10
-    return loss
-obj_and_grad = jax.jit(jax.value_and_grad(lambda M: objective(M, J, Y)))
+#     loss = symplectic_loss + J_loss * 10
+#     return loss
+# obj_and_grad = jax.jit(jax.value_and_grad(lambda M: objective(M, J, Y)))
 
-np.random.seed(1)
-# initial = np.eye(2*N) + np.random.normal(0, 0.1, (N*2, N*2))
-initial = jnp.block([[inc_rotation_matrix_opt_T, np.zeros((N,N))], [np.zeros((N, N)), inc_rotation_matrix_opt_T]])
-sol = minimize(obj_and_grad, initial.reshape(-1), jac=True, options={'gtol': 1e-8, 'disp': True})
-inc_rotation_matrix_opt_T = sol.x.reshape((N*2, N*2))
+# np.random.seed(1)
+# # initial = np.eye(2*N) + np.random.normal(0, 0.1, (N*2, N*2))
+# initial = jnp.block([[inc_rotation_matrix_opt_T, np.zeros((N,N))], [np.zeros((N, N)), inc_rotation_matrix_opt_T]])
+# sol = minimize(obj_and_grad, initial.reshape(-1), jac=True, options={'gtol': 1e-8, 'disp': True})
+# inc_rotation_matrix_opt_T = sol.x.reshape((N*2, N*2))
 
-print(inc_rotation_matrix_opt_T.T @ J @ inc_rotation_matrix_opt_T)
-Theta = (np.linalg.inv(initial) @ Y)[:N]
+# print(inc_rotation_matrix_opt_T.T @ J @ inc_rotation_matrix_opt_T)
+# Theta = (np.linalg.inv(initial) @ Y)[:N]
 
-fig, axs = plt.subplots(2,5,figsize=(15, 5))
-for i, pl in enumerate(planets + ('Asteroid',)):
-    axs[0][i].set_title(pl)
-    pts = sim['y'][i]
-    axs[0][i].plot(np.real(pts), np.imag(pts))
-    axs[0][i].set_aspect('equal')
-    pts = Theta[i]
-    axs[1][i].plot(np.real(pts), np.imag(pts))
-    axs[1][i].set_aspect('equal')
+# fig, axs = plt.subplots(2,5,figsize=(15, 5))
+# for i, pl in enumerate(planets + ('Asteroid',)):
+#     axs[0][i].set_title(pl)
+#     pts = sim['y'][i]
+#     axs[0][i].plot(np.real(pts), np.imag(pts))
+#     axs[0][i].set_aspect('equal')
+#     pts = Theta[i]
+#     axs[1][i].plot(np.real(pts), np.imag(pts))
+#     axs[1][i].set_aspect('equal')
 # %%
 planet_ecc_fmft = {}
 planet_inc_fmft = {}
 for i,pl in enumerate(planets + ("Asteroid",)):
-    planet_ecc_fmft[pl] = fmft(t,Phi[i],14)
+    planet_ecc_fmft[pl] = fmft(base_sim['time'],Phi[i],14)
     planet_e_freqs = np.array(list(planet_ecc_fmft[pl].keys()))
 
-    # planet_inc_fmft[pl] = fmft(base_sim['time'],Theta[i],14)
-    # planet_i_freqs = np.array(list(planet_inc_fmft[pl].keys()))
+    planet_inc_fmft[pl] = fmft(base_sim['time'],Theta[i],14)
+    planet_i_freqs = np.array(list(planet_inc_fmft[pl].keys()))
 
     print("")
     print(pl)
     print("-------")
     for g in planet_e_freqs[:8]:
         print(f"{g * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_ecc_fmft[pl][g]):0.8f} ∢{np.angle(planet_ecc_fmft[pl][g]):.2f}")
-    # print("s")
-    # print("-------")
-    # for s in planet_i_freqs[:4]:
-    #     print(f"{s * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_inc_fmft[pl][s]):0.6f} ∢{np.angle(planet_inc_fmft[pl][s]):.2f}")
+    print("s")
+    print("-------")
+    for s in planet_i_freqs[:4]:
+        print(f"{s * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_inc_fmft[pl][s]):0.6f} ∢{np.angle(planet_inc_fmft[pl][s]):.2f}")
     
     # return planet_ecc_fmft, planet_inc_fmft
 
@@ -505,8 +487,8 @@ g_vec[4] = list(planet_ecc_fmft['Asteroid'].keys())[0]
 s_vec[0] = list(planet_inc_fmft['Jupiter'].keys())[0]
 s_vec[1] = list(planet_inc_fmft['Saturn'].keys())[0]
 s_vec[2] = list(planet_inc_fmft['Uranus'].keys())[0]
-s_vec[3] = list(planet_inc_fmft['Neptune'].keys())[1]
-s_vec[4] = list(planet_inc_fmft['Asteroid'].keys())[1]
+s_vec[3] = list(planet_inc_fmft['Neptune'].keys())[0]
+s_vec[4] = list(planet_inc_fmft['Asteroid'].keys())[0]
 
 g_amp = np.zeros(5, dtype=np.complex128)
 s_amp = np.zeros(5, dtype=np.complex128)
@@ -554,7 +536,7 @@ def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None):
     return planet_fmft
 planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi, N=14, display=True)
 # %%
-def get_k_vecs(order, pl_idx, s_conserved_idx, N):
+def get_k_vecs(order, pl_idx, s_conserved_idx, N, include_negative=False):
     assert order % 2 == 1, "Order must be odd"
     possible_k = []
 
@@ -569,9 +551,9 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N):
     
     # THIRD ORDER
     if order == 3:
-        for a in range(N):
-            for b in range(a,N):
-                for c in range(N):
+        for a in range(N*2):
+            for b in range(a,N*2):
+                for c in range(N*2):
                     if c==a:
                         continue
                     if c==b:
@@ -586,11 +568,11 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N):
     
     # FIFTH ORDER
     if order == 5:
-        for a in range(N):
-            for b in range(a,N):
-                for c in range(b, N):
-                    for d in range(N):
-                        for e in range(d,N):
+        for a in range(N*2):
+            for b in range(a,N*2):
+                for c in range(b, N*2):
+                    for d in range(N*2):
+                        for e in range(d,N*2):
                             if d==a or d==b or d==c:
                                 continue
                             if e==a or e==b or e==c:
@@ -605,9 +587,11 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N):
                                 continue
                             possible_k.append(k)
     possible_k = np.array(possible_k)
+    if include_negative:
+        possible_k = np.concat((possible_k, -possible_k), axis=0)
     return possible_k
 # %%
-def get_combs(order, pl_fmft, pl_list, omega_vec, display=False):
+def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False):
     combs = []
     for i,pl in enumerate(pl_list):
         if display:
@@ -616,7 +600,7 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False):
             print("-"*len(pl))
             print("kvec \t\t\t\t\t omega \t err. \t amplitude")
         comb = {}
-        for k in get_k_vecs(order, i, s_conserved_idx, N):
+        for k in get_k_vecs(order, i, s_conserved_idx, N, include_negative=include_negative):
             omega = k @ np.abs(omega_vec)
             # print(omega*TO_ARCSEC_PER_YEAR, k)
             omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
@@ -624,13 +608,6 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False):
             if omega_error<1e-4:
                 print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
                 comb[tuple(k)] = (False, amp)
-            # else:
-            #     omega *= -1
-            #     omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
-            #     omega_error = np.abs(omega_N/omega-1)
-            #     if omega_error<1e-4:
-            #         print ("inv", -k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
-            #         comb[tuple(k)] = (True, amp)
         combs.append(comb)
     return combs
 # %%
@@ -658,7 +635,7 @@ for i,order in enumerate(iterations):
     print("#"*10, f"ITERATION {i} - ORDER {order}", "#"*10)
     last_x_val, _ = eval_transform(x, x_bars, subs, x_val, i)
     last_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], last_x_val, 14, display=False)
-    combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True)
+    combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True, include_negative=False)
 
     x_bar_i = [sympy.Symbol(f"\\bar X^{{({i})}}_"+str(j)) for j in range(N*2)]
 
