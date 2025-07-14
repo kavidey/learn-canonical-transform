@@ -465,11 +465,11 @@ for i,pl in enumerate(planets + ("Asteroid",)):
     print(pl)
     print("-------")
     for g in planet_e_freqs[:8]:
-        print(f"{g * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_ecc_fmft[pl][g]):0.8f} ∢{np.angle(planet_ecc_fmft[pl][g]):.2f}")
+        print(f"{g * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_ecc_fmft[pl][g]):0.8f} ∠{np.angle(planet_ecc_fmft[pl][g]):.2f}")
     print("s")
     print("-------")
     for s in planet_i_freqs[:4]:
-        print(f"{s * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_inc_fmft[pl][s]):0.6f} ∢{np.angle(planet_inc_fmft[pl][s]):.2f}")
+        print(f"{s * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_inc_fmft[pl][s]):0.6f} ∠{np.angle(planet_inc_fmft[pl][s]):.2f}")
     
     # return planet_ecc_fmft, planet_inc_fmft
 
@@ -591,7 +591,7 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N, include_negative=False):
         possible_k = np.concat((possible_k, -possible_k), axis=0)
     return possible_k
 # %%
-def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False):
+def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False, omega_pct_thresh=1e-4, omega_abs_thresh=1e-3):
     combs = []
     for i,pl in enumerate(pl_list):
         if display:
@@ -604,9 +604,10 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
             omega = k @ omega_vec
             # print(omega*TO_ARCSEC_PER_YEAR, k)
             omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
-            omega_error = np.abs(omega_N/omega-1)
-            if omega_error<1e-4:
-                print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_error,np.abs(amp)))
+            omega_pct_error = np.abs(omega_N/omega-1)
+            omega_abs_error = np.abs(omega_N - omega)
+            if omega_pct_error<omega_pct_thresh and omega_abs_error < omega_abs_thresh:
+                print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_pct_error,np.abs(amp)))
                 comb[tuple(k)] = (amp, omega_N)
         combs.append(comb)
     return combs
@@ -629,13 +630,14 @@ x_val_subs = {x[i]: x_val[:, i] for i in range(N*2)}
 
 # iterations = [1]
 # iterations = [3]
-iterations = [1,3]
-# iterations = [1,3,5]
+# iterations = [5]
+# iterations = [1,3]
+iterations = [1,3,5]
 for i,order in enumerate(iterations):
     print("#"*10, f"ITERATION {i} - ORDER {order}", "#"*10)
     last_x_val, _ = eval_transform(x, x_bars, subs, x_val, i)
     last_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], last_x_val, 14, display=False)
-    combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True, include_negative=False)
+    combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True, include_negative=False, omega_pct_thresh=5e-5)
 
     x_bar_i = [sympy.Symbol(f"\\bar X^{{({i})}}_"+str(j)) for j in range(N*2)]
 
@@ -655,7 +657,7 @@ for i,order in enumerate(iterations):
                 x_bar_i_j -= term
             else:
                 x_bar_i_j += term
-        subs[x_bar_i[j]] = x_bar_i_j
+        subs[x_bar_i[j]] = x_bar_i_j#.simplify()
     x_bars.append(x_bar_i)
 
 Psi_trans, x_bar_n = eval_transform(x, x_bars, subs, x_val, len(iterations))
@@ -663,11 +665,11 @@ Psi_trans, x_bar_n = eval_transform(x, x_bars, subs, x_val, len(iterations))
 # %%
 import scipy.signal
 b, a = scipy.signal.butter(10, 100, 'low', fs=(TO_ARCSEC_PER_YEAR / np.gradient(sim['time']).mean()) * 2 * np.pi) # type: ignore[reportUnknownVariableType]
-# Psi_filt = scipy.signal.lfilter(b, a, Psi_trans)
-Psi_filt = Psi_trans
+Psi_filt = scipy.signal.lfilter(b, a, Psi_trans)
+# Psi_filt = Psi_trans
 # plt.plot(np.real(Psi_filt[3]), np.imag(Psi_filt[3]))
 # %%
-new_planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi_filt, N=14, display=True, compareto=planet_fmft)
+new_planet_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], Psi_trans, N=14, display=True, compareto=last_fmft)
 # %%
 fig, axs = plt.subplots(2,2*N,figsize=(30, 5))
 for i, pl in enumerate(psi_planet_list):
