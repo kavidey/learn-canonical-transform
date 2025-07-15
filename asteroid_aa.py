@@ -1,5 +1,6 @@
 # %%
 from pathlib import Path
+import copy
 import jax
 import jax.numpy as jnp
 import jax.random as jnr
@@ -84,12 +85,6 @@ def load_sim(desn):
 
     results['x'] = np.sqrt(results['Lambda']) * np.sqrt(1 - np.sqrt(1-results['e']**2)) * np.exp(1j * results['pomega'])
     results['y'] = np.sqrt(2 * results['Lambda']) * np.power(1-results['e']**2, 1/4) * np.sin(results['inc']/2) * np.exp(1j * results['Omega'])
-
-    # results['x'] = np.float64(results['x'])
-    # results['y'] = np.float64(results['y'])
-
-    # results['G'] = results['x']
-    # results['F'] = results['y']
 
     # coordinate pairs are:
     # - Lambda, Lambda
@@ -614,9 +609,8 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
 # %%
 def eval_transform(x, x_bars, subs, x_val, num_iter):
     x_bar_n = x_bars[-1]
-    for i in range(num_iter+1):
-        for j in range(N*2):
-            x_bar_n[j] = x_bar_n[j].subs(subs)
+    for _ in range(num_iter):
+        x_bar_n = [x_bar.subs(subs) for x_bar in x_bar_n]
     x_trans = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N*2)])
     return x_trans, x_bar_n
 # %%
@@ -626,20 +620,19 @@ x_bar_0 = [sympy.Symbol("\\bar X^{(0)}_"+str(i)) for i in range(N*2)]
 
 x_bars = [x_bar_0]
 subs = {x_bar_0[i]: x[i] for i in range(N*2)}
-x_val_subs = {x[i]: x_val[:, i] for i in range(N*2)}
 
 # iterations = [1]
 # iterations = [3]
 # iterations = [5]
-# iterations = [1,3]
-iterations = [1,3,5]
+iterations = [1,3]
+# iterations = [1,3,5]
 for i,order in enumerate(iterations):
-    print("#"*10, f"ITERATION {i} - ORDER {order}", "#"*10)
-    last_x_val, _ = eval_transform(x, x_bars, subs, x_val, i)
+    print("#"*10, f"ITERATION {i+1} - ORDER {order}", "#"*10)
+    last_x_val, _ = eval_transform(x, x_bars, subs, x_val, i+1)
     last_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], last_x_val, 14, display=False)
     combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True, include_negative=False, omega_pct_thresh=5e-5)
 
-    x_bar_i = [sympy.Symbol(f"\\bar X^{{({i})}}_"+str(j)) for j in range(N*2)]
+    x_bar_i = [sympy.Symbol(f"\\bar X^{{({i+1})}}_"+str(j)) for j in range(N*2)]
 
     # loop through each object
     for j in range(N*2):
@@ -653,14 +646,13 @@ for i,order in enumerate(iterations):
                 # add each object the correct number of times
                 for l in range(np.abs(k[k_idx])):
                     term *= x_bars[-1][k_idx]/omega_amp[k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()/np.conj(omega_amp[k_idx])
-            if omega > 0:
-                x_bar_i_j -= term
-            else:
-                x_bar_i_j += term
-        subs[x_bar_i[j]] = x_bar_i_j#.simplify()
+            if omega < 0:
+                term *= -1
+            x_bar_i_j -= term
+        subs[x_bar_i[j]] = x_bar_i_j
     x_bars.append(x_bar_i)
 
-Psi_trans, x_bar_n = eval_transform(x, x_bars, subs, x_val, len(iterations))
+Psi_trans, x_bar_n = eval_transform(x, x_bars, subs, x_val, len(iterations)+1)
 # x_bar_n
 # %%
 import scipy.signal
