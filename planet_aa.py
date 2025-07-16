@@ -86,9 +86,9 @@ def load_sim(path, filter_freq=None):
     fs_arcsec_per_yr = (TO_ARCSEC_PER_YEAR / np.gradient(results['time']).mean()) * 2 * np.pi
 
     if filter_freq:
-        b, a = scipy.signal.butter(10, filter_freq, 'low', fs_arcsec_per_yr) # type: ignore[reportUnknownVariableType]
-        results['x'] = scipy.signal.lfilter(b, a, results['x'])
-        results['y'] = scipy.signal.lfilter(b, a, results['y'])
+        b, a = scipy.signal.butter(10, filter_freq, 'low', fs=fs_arcsec_per_yr) # type: ignore[reportUnknownVariableType]
+        results['x'] = scipy.signal.lfilter(b, a, results['x'])[:, 100:]
+        results['y'] = scipy.signal.lfilter(b, a, results['y'])[:, 100:]
 
     return results
 # %%
@@ -99,7 +99,7 @@ def load_sim(path, filter_freq=None):
 # print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
 # %%
 # train_sim = load_sim(dataset_path / "planet_integration.59088753087.500000.sa")
-train_sim = load_sim(dataset_path / "planet_integration.590887530.200000.sa", filter_freq=None)
+train_sim = load_sim(dataset_path / "planet_integration.590887530.200000.sa", filter_freq=200)
 # train_sim = load_sim(dataset_path / "planet_integration.sa")
 print(train_sim['time'].shape, train_sim['time'][-1] * TO_YEAR)
 # keep_first = int(train_sim['time'].shape[0]*0.9)
@@ -240,7 +240,9 @@ def objective(R, G, m):
     J_loss = ((jnp.abs(Phi) - J_approx[..., None]) ** 2).sum()
 
     off_diag_weight = 1 / jnp.pow(jnp.outer(J_approx, J_approx), 1/4)
-    off_diag_loss = (((jnp.ones((N,N))-jnp.eye(N)) * R.T * off_diag_weight) ** 2).sum()
+    off_diag_weight = jnp.fill_diagonal(off_diag_weight, off_diag_weight.max(), inplace=False)
+    # off_diag_loss = (((jnp.ones((N,N))-jnp.eye(N)) * R.T * off_diag_weight) ** 2).sum()
+    off_diag_loss = (((R.T - jnp.eye(N)) ** 2) * off_diag_weight).sum()
 
     loss = rotation_loss + J_loss + off_diag_loss * 1e-10
     return loss
@@ -317,7 +319,9 @@ def objective(R, G, m):
     J_loss = ((jnp.abs(Phi) - J_approx[..., None]) ** 2).sum()
 
     off_diag_weight = 1 / jnp.pow(jnp.outer(J_approx, J_approx), 1/4)
-    off_diag_loss = (((jnp.ones((N,N))-jnp.eye(N)) * R.T * off_diag_weight) ** 2).sum()
+    off_diag_weight = jnp.fill_diagonal(off_diag_weight, off_diag_weight.max(), inplace=False)
+    # off_diag_loss = (((jnp.ones((N,N))-jnp.eye(N)) * R.T * off_diag_weight) ** 2).sum()
+    off_diag_loss = (((R.T - jnp.eye(N)) ** 2) * off_diag_weight).sum()
 
     loss = rotation_loss + J_loss + off_diag_loss * 1e-10
     return loss
@@ -329,6 +333,9 @@ inc_rotation_matrix_opt_T = sol.x.reshape(N,N)
 
 print(np.linalg.det(inc_rotation_matrix_opt_T))
 print(inc_rotation_matrix_opt_T @ inc_rotation_matrix_opt_T.T)
+
+print("original\n", inc_rotation_matrix_T)
+print("optimized\n", inc_rotation_matrix_opt_T)
 
 Theta = (np.linalg.inv(inc_rotation_matrix_opt_T) @ sim['y'])
 
@@ -598,7 +605,7 @@ g_vec[6] = list(planet_ecc_fmft['Uranus'].keys())[0]
 g_vec[7] = list(planet_ecc_fmft['Neptune'].keys())[0]
 
 s_vec[0] = list(planet_inc_fmft['Mercury'].keys())[0]
-s_vec[1] = list(planet_inc_fmft['Venus'].keys())[1]
+s_vec[1] = list(planet_inc_fmft['Venus'].keys())[0]
 s_vec[2] = list(planet_inc_fmft['Earth'].keys())[0]
 s_vec[3] = list(planet_inc_fmft['Mars'].keys())[0]
 s_vec[4] = list(planet_inc_fmft['Jupiter'].keys())[0]
@@ -779,13 +786,13 @@ subs = {x_bar_0[i]: x[i] for i in range(N*2)}
 
 trans_fns = []
 
-iterations = [1]
+# iterations = [1]
 # iterations = [3]
 # iterations = [5]
 # iterations = [7]
 # iterations = [1,3]
+iterations = [1,3,5]
 # iterations = [1,3,5,7]
-# iterations = [1,3,5]
 for i,order in enumerate(iterations):
     print("#"*10, f"ITERATION {i+1} - ORDER {order}", "#"*10)
     last_x_val = apply_sequential_transforms(x_val, trans_fns)
@@ -814,7 +821,7 @@ for i,order in enumerate(iterations):
 
 Psi_trans = apply_sequential_transforms(x_val, trans_fns)
 # %%
-b, a = scipy.signal.butter(10, 100, 'low', fs_arcsec_per_yr) # type: ignore[reportUnknownVariableType]
+b, a = scipy.signal.butter(10, 100, 'low', fs=fs_arcsec_per_yr) # type: ignore[reportUnknownVariableType]
 # Psi_filt = scipy.signal.lfilter(b, a, Psi_trans)
 Psi_filt = Psi_trans
 # plt.plot(np.real(Psi_filt[3]), np.imag(Psi_filt[3]))
