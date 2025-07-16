@@ -42,7 +42,7 @@ def closest_key_entry(d, target):
         The (key, value) pair whose key is closest to `target`.
     """
     closest_key = min(d.keys(), key=lambda k: abs(k - target))
-    return closest_key, d[closest_key] * np.sign(closest_key)
+    return closest_key, d[closest_key]
 
 def symmetrize_axes(axes):
     y_max = np.max(np.abs(axes.get_ylim()))
@@ -581,11 +581,37 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N, include_negative=False):
                             if k[s_conserved_idx] != 0:
                                 continue
                             possible_k.append(k)
+    
+    # SEVENTH ORDER
+    if order == 7:
+        for a in range(N*2):
+            for b in range(a,N*2):
+                for c in range(b, N*2):
+                    for d in range(c, N*2):
+                        for e in range(N*2):
+                            for f in range(e,N*2):
+                                for g in range(f,N*2):
+                                    if f==a or f==b or f==c or f==d:
+                                        continue
+                                    if g==a or g==b or g==c or g==d:
+                                        continue
+                                    k = np.zeros(N*2, dtype=int)
+                                    k[a] +=1
+                                    k[b] +=1
+                                    k[c] +=1
+                                    k[d] +=1
+                                    k[e] -=1
+                                    k[f] -=1
+                                    k[g] -=1
+                                    if k[s_conserved_idx] != 0:
+                                        continue
+                                    possible_k.append(k)
+
     possible_k = np.array(possible_k)
     if include_negative:
         possible_k = np.concat((possible_k, -possible_k), axis=0)
     return possible_k
-# %%
+
 def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False, omega_pct_thresh=1e-4, omega_abs_thresh=1e-3):
     combs = []
     for i,pl in enumerate(pl_list):
@@ -606,13 +632,24 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
                 comb[tuple(k)] = (amp, omega_N)
         combs.append(comb)
     return combs
-# %%
-def eval_transform(x, x_bars, subs, x_val, num_iter):
-    x_bar_n = x_bars[-1]
-    for _ in range(num_iter):
-        x_bar_n = [x_bar.subs(subs) for x_bar in x_bar_n]
-    x_trans = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N*2)])
-    return x_trans, x_bar_n
+
+# def eval_transform(x, x_bars, subs, x_val, num_iter):
+#     x_bar_n = x_bars[-1]
+#     for _ in range(num_iter):
+#         x_bar_n = [x_bar.subs(subs) for x_bar in x_bar_n]
+#     x_trans = np.array([sympy.lambdify(x, x_bar_n[i], 'numpy')(*x_val) for i in range(N*2)])
+#     return x_trans, x_bar_n
+
+def eval_transform(x_bars, subs):
+    x_i_lambda = [sympy.lambdify(x_bars[-2], x_bars[-1][i].subs(subs)) for i in range(N*2)]
+
+    trans = lambda x: np.array([x_lambda(*x) for x_lambda in x_i_lambda])
+    return trans
+
+def apply_sequential_transforms(x, transforms):
+    for transform in reversed(transforms):
+        x = transform(x)
+    return x
 # %%
 x_val = Psi
 x = [sympy.Symbol("X_"+str(i)) for i in range(N*2)]
@@ -621,14 +658,18 @@ x_bar_0 = [sympy.Symbol("\\bar X^{(0)}_"+str(i)) for i in range(N*2)]
 x_bars = [x_bar_0]
 subs = {x_bar_0[i]: x[i] for i in range(N*2)}
 
+trans_fns = []
+
 # iterations = [1]
 # iterations = [3]
 # iterations = [5]
-iterations = [1,3]
+# iterations = [7]
+# iterations = [1,3]
 # iterations = [1,3,5]
+iterations = [1,3,5,7]
 for i,order in enumerate(iterations):
     print("#"*10, f"ITERATION {i+1} - ORDER {order}", "#"*10)
-    last_x_val, _ = eval_transform(x, x_bars, subs, x_val, i+1)
+    last_x_val = apply_sequential_transforms(x_val, trans_fns)
     last_fmft = get_planet_fmft(psi_planet_list, base_sim['time'], last_x_val, 14, display=False)
     combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True, include_negative=False, omega_pct_thresh=5e-5)
 
@@ -636,24 +677,33 @@ for i,order in enumerate(iterations):
 
     # loop through each object
     for j in range(N*2):
+        # print(psi_planet_list[j])
         # to first order the coordinate is the original coordinate
         x_bar_i_j = x_bars[-1][j]
         # correct for each combination
         for k,(amp, omega) in combs[j].items():
             term = amp
+            # term = 1
             # loop through each object
+            delta = 0
             for k_idx in range(N*2):
                 # add each object the correct number of times
                 for l in range(np.abs(k[k_idx])):
                     term *= x_bars[-1][k_idx]/omega_amp[k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()/np.conj(omega_amp[k_idx])
-            if omega < 0:
-                term *= -1
+                    # term *= x_bars[-1][k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()
+                    # delta += np.angle(omega_amp[k_idx]) if k[k_idx] > 0 else np.angle(np.conj(omega_amp[k_idx]))
+                    # print(delta)
+            # if omega < 0:
+            #     term *= -1
+            # print(np.array(k), omega*TO_ARCSEC_PER_YEAR)
+            # print(f"{np.angle(amp):.3f}, {delta:.3f}, {np.angle(amp) - delta:.3f}")
+            # print(term)
             x_bar_i_j -= term
         subs[x_bar_i[j]] = x_bar_i_j
     x_bars.append(x_bar_i)
+    trans_fns.append(eval_transform(x_bars, subs))
 
-Psi_trans, x_bar_n = eval_transform(x, x_bars, subs, x_val, len(iterations)+1)
-# x_bar_n
+Psi_trans = apply_sequential_transforms(x_val, trans_fns)
 # %%
 import scipy.signal
 b, a = scipy.signal.butter(10, 100, 'low', fs=(TO_ARCSEC_PER_YEAR / np.gradient(sim['time']).mean()) * 2 * np.pi) # type: ignore[reportUnknownVariableType]
