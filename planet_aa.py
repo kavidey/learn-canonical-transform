@@ -761,8 +761,16 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
             omega_pct_error = np.abs(omega_N/omega-1)
             omega_abs_error = np.abs(omega_N - omega)
             if omega_pct_error<omega_pct_thresh and omega_abs_error < omega_abs_thresh:
-                print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_pct_error,np.abs(amp)))
-                comb[tuple(k)] = (amp, omega_N)
+                omega_N_exists = False
+                for old_k,(_, old_omega, old_err) in comb.items():
+                    if old_omega == omega_N:
+                        omega_N_exists = True
+                        if old_err > omega_pct_error:
+                            del comb[old_k]
+                            omega_N_exists = False
+                if not omega_N_exists:
+                    comb[tuple(k)] = (amp, omega_N, omega_pct_error)
+                    if display: print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_pct_error,np.abs(amp)))
         combs.append(comb)
     return combs
 
@@ -790,8 +798,8 @@ trans_fns = []
 # iterations = [3]
 # iterations = [5]
 # iterations = [7]
-# iterations = [1,3]
-iterations = [1,3,5]
+iterations = [1,3]
+# iterations = [1,3,5]
 # iterations = [1,3,5,7]
 for i,order in enumerate(iterations):
     print("#"*10, f"ITERATION {i+1} - ORDER {order}", "#"*10)
@@ -806,7 +814,7 @@ for i,order in enumerate(iterations):
         # to first order the coordinate is the original coordinate
         x_bar_i_j = x_bars[-1][j]
         # correct for each combination
-        for k,(amp, omega) in combs[j].items():
+        for k,(amp, omega, _) in combs[j].items():
             term = amp
             # loop through each object
             delta = 0
@@ -839,4 +847,15 @@ for i, pl in enumerate(psi_planet_list):
     axs[1][i].plot(np.real(pts)[100:], np.imag(pts)[100:])
     axs[1][i].set_aspect('equal')
     # symmetrize_axes(axs[1][i])
+# %%
+fig, axs = plt.subplots(2, N,figsize=(20,5))
+for i, pl in enumerate(planets):
+    axs[0][i].set_title(pl)
+    axs[0][i].plot(sim['time'][100:], Psi_filt[i][100:] * np.conj(Psi_filt[i])[100:])
+    axs[1][i].plot(sim['time'][100:], Psi_filt[i+N][100:] * np.conj(Psi_filt[i+N])[100:])
+    # axs[0][i].set_ylim(bottom=0)
+    # axs[1][i].set_ylim(bottom=0)
+axs[0][0].set_ylabel("Eccentricity")
+axs[1][0].set_ylabel("Inclination")
+plt.show()
 # %%
