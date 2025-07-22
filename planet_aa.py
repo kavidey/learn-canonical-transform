@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from IPython.display import clear_output
 from scipy.optimize import minimize
+from scipy.optimize import dual_annealing
 import scipy.signal
 
 import rebound as rb
@@ -55,6 +56,7 @@ def symmetrize_axes(axes):
     axes.set_ylim(ymin=-ax_max, ymax=ax_max)
     axes.set_xlim(xmin=-ax_max, xmax=ax_max)
 # %%
+# dataset_path = Path('datasets') / 'kat_planet_integration'
 dataset_path = Path('datasets') / 'planet_integration'
 TO_ARCSEC_PER_YEAR = 60*60*180/np.pi * (2*np.pi)
 TO_YEAR = 1/(2*np.pi)
@@ -87,8 +89,11 @@ def load_sim(path, filter_freq=None):
 
     if filter_freq:
         b, a = scipy.signal.butter(10, filter_freq, 'low', fs=fs_arcsec_per_yr) # type: ignore[reportUnknownVariableType]
-        results['x'] = scipy.signal.lfilter(b, a, results['x'])[:, 100:]
-        results['y'] = scipy.signal.lfilter(b, a, results['y'])[:, 100:]
+        results['x'] = scipy.signal.lfilter(b, a, results['x'])
+        results['y'] = scipy.signal.lfilter(b, a, results['y'])
+
+        for key in results.keys():
+            results[key] = results[key][..., 100:]
 
     return results
 # %%
@@ -99,16 +104,19 @@ def load_sim(path, filter_freq=None):
 # print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
 # %%
 # train_sim = load_sim(dataset_path / "planet_integration.59088753087.500000.sa")
+# train_sim = load_sim(dataset_path / "planet_integration.628318530.50000.sa", filter_freq=None)
 train_sim = load_sim(dataset_path / "planet_integration.590887530.200000.sa", filter_freq=200)
 # train_sim = load_sim(dataset_path / "planet_integration.sa")
 print(train_sim['time'].shape, train_sim['time'][-1] * TO_YEAR)
 # keep_first = int(train_sim['time'].shape[0]*0.9)
-keep_first = int(50e3)
-print(train_sim['time'][keep_first] * TO_YEAR)
-sim = {}
-for key, val in train_sim.items():
-    sim[key] = val[..., :keep_first]
-train_sim = sim
+# keep_first = int(50e3)
+# keep_first = train_sim['time'].shape[0] - 1
+# print(train_sim['time'][keep_first] * TO_YEAR)
+# sim = {}
+# for key, val in train_sim.items():
+#     sim[key] = val[..., :keep_first]
+# train_sim = sim
+sim = train_sim
 
 fs_arcsec_per_yr = (TO_ARCSEC_PER_YEAR / np.gradient(train_sim['time']).mean()) * 2 * np.pi
 print("sample rate (\"/yr):", fs_arcsec_per_yr)
@@ -858,4 +866,89 @@ for i, pl in enumerate(planets):
 axs[0][0].set_ylabel("Eccentricity")
 axs[1][0].set_ylabel("Inclination")
 plt.show()
+# %%
+# script X matching action variable in Mogavero & Laskar (2023)
+# sX = np.real(sim['x'] * np.conj(sim['x']))
+sX = np.real(Psi_filt[:N] * np.conj(Psi_filt[:N]))
+# script Psi
+# sPsi = np.real(sim['y'] * np.conj(sim['y']))
+sPsi = np.real(Psi_filt[N:] * np.conj(Psi_filt[N:]))
+# %%
+gamma_0 = np.array([1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0])
+C_ecc = gamma_0[:N] @ sX + gamma_0[N:] @ sPsi
+
+gamma_1 = np.array([0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0])
+C_inc = gamma_1[:N] @ sX + gamma_1[N:] @ sPsi
+C_0 = (C_inc + C_ecc)[-1]
+
+C_inc_hat = C_inc / (np.linalg.norm(gamma_1) * C_0)
+
+gamma_2 = np.array([0,0,-1,-1,0,0,0,0,1,1,2,2,0,0,0,0])
+C_2 = gamma_2[:N] @ sX + gamma_2[N:] @ sPsi
+C_2_hat = C_2 / (np.linalg.norm(gamma_2) * C_0)
+
+t = sim['time'] / (2*np.pi*1e6)
+
+plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
+plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
+plt.plot(t, C_inc_hat - C_inc_hat.mean(), label=r"$C_{inc}$", c="tab:orange")
+# plt.plot(t, C_2_hat - C_2_hat.mean(), label=r"$\hat C_{2}$", c="tab:red")
+plt.xlim(left=t[100], right=t[-1])
+plt.legend()
+plt.xlabel("Myr")
+plt.show()
+# %%
+def objective(A, X):
+    int_loss = ((A - A.round())**2).sum()
+    int_loss = 0
+    non_zero_loss = -jnp.linalg.norm(A)
+    J = A @ X #/ jnp.linalg.norm(A)
+    J = J / C_0
+
+    J_approx = jnp.abs(J).mean()
+    J_loss = ((jnp.abs(J) - J_approx) ** 2)
+    J_loss = J_loss.sum()
+
+    return J_loss + int_loss*5e-1 + non_zero_loss*1e-2
+obj_no_grad = jax.jit(lambda A: objective(A, jnp.concat((sX, sPsi))))
+obj_and_grad = jax.jit(jax.value_and_grad(lambda A: objective(A, jnp.concat((sX, sPsi)))))
+
+lw=[-1]*(N*2)
+up=[1]*(N*2)
+sol = dual_annealing(obj_no_grad, bounds=list(zip(lw, up)))
+# sol = minimize(obj_and_grad, jnp.ones(N*2)*0.5, options={'gtol': 1e-8, 'disp': True}, jac=True)
+# sol = minimize(obj_no_grad, jnp.array(gamma_2), options={'gtol': 1e-8, 'disp': True})
+
+gamma_n = sol.x
+print(gamma_n)
+
+plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
+plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
+plt.plot(t, C_inc_hat - C_inc_hat.mean(), label=r"$C_{inc}$", c="tab:orange")
+# plt.plot(t, C_2_hat - C_2_hat.mean(), label=r"$\hat C_{2}$", c="tab:red")
+
+C_opt = gamma_n @ np.concat((sX, sPsi))
+C_opt_hat = C_opt / (np.linalg.norm(gamma_n) * C_0)
+plt.plot(t, C_opt_hat - C_opt_hat.mean(), label=r"$\hat C_{opt}$", c="tab:purple")
+plt.xlim(left=t[100], right=t[-1])
+plt.legend()
+plt.xlabel("Myr")
+plt.show()
+# %%
+def objective(A, X):
+    A = A.reshape((N*2, N*2)).round()
+    off_diag = A - np.diag(np.diag(A))
+    orthogonality_loss = (off_diag**2).sum()
+
+    J = A @ X
+
+    J_approx = np.abs(J).mean(axis=1)
+    J_loss = ((np.abs(J) - J_approx[..., None]) ** 2) / J_approx[..., None]
+    J_loss = J_loss.sum()
+
+    return J_loss + orthogonality_loss*1e-5
+
+lw=[-1]*(N*2)**2
+up=[1]*(N*2)**2
+ret = dual_annealing(lambda A: objective(A,np.concat((sX, sPsi))), bounds=list(zip(lw, up)))
 # %%
