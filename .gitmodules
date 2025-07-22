@@ -1,0 +1,3 @@
+[submodule "SBDynT"]
+	path = SBDynT
+	url = git@github.com:small-body-dynamics/SBDynT
