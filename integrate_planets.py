@@ -8,6 +8,9 @@ import pandas as pd
 import rebound as rb
 import celmech as cm
 
+import sys
+sys.path.insert(0, 'SBDynT/src')
+import sbdynt as sbd
 # %%
 integration_path = Path("datasets") / "planet_integration"
 integration_path.mkdir(parents=True, exist_ok=True)
@@ -24,6 +27,40 @@ integration_path.mkdir(parents=True, exist_ok=True)
 # sim.add("Uranus", date=date)
 # sim.add("Neptune", date=date)
 # sim.save_to_file(str(integration_path/"planets.bin"))
+
+epoch=2457019.5
+sim = rb.Simulation()
+
+(flag, mass, radius, [plx,ply,plz],[plvx,plvy,plvz]) = sbd.query_horizons_planets(obj='sun',epoch=epoch)
+if flag: sim.add(m=mass, x=plx, y=ply, z=plz, vx=plvx/(np.pi*2), vy=plvy/(np.pi*2), vz=plvz/(np.pi*2))
+
+(flag, mass, radius, [plx,ply,plz],[plvx,plvy,plvz]) = sbd.query_horizons_planets(obj='mercury',epoch=epoch)
+if flag: sim.add(m=mass, x=plx, y=ply, z=plz, vx=plvx/(np.pi*2), vy=plvy/(np.pi*2), vz=plvz/(np.pi*2))
+
+(flag, mass, radius, [plx,ply,plz],[plvx,plvy,plvz]) = sbd.query_horizons_planets(obj='venus',epoch=epoch)
+if flag: sim.add(m=mass, x=plx, y=ply, z=plz, vx=plvx/(np.pi*2), vy=plvy/(np.pi*2), vz=plvz/(np.pi*2))
+
+(flag, mass, radius, [plx,ply,plz],[plvx,plvy,plvz]) = sbd.query_horizons_planets(obj='earth',epoch=epoch)
+if flag: sim.add(m=mass, x=plx, y=ply, z=plz, vx=plvx/(np.pi*2), vy=plvy/(np.pi*2), vz=plvz/(np.pi*2))
+
+(flag, mass, radius, [plx,ply,plz],[plvx,plvy,plvz]) = sbd.query_horizons_planets(obj='mars',epoch=epoch)
+if flag: sim.add(m=mass, x=plx, y=ply, z=plz, vx=plvx/(np.pi*2), vy=plvy/(np.pi*2), vz=plvz/(np.pi*2))
+
+(flag, mass, radius, [plx,ply,plz],[plvx,plvy,plvz]) = sbd.query_horizons_planets(obj='jupiter',epoch=epoch)
+if flag: sim.add(m=mass, x=plx, y=ply, z=plz, vx=plvx/(np.pi*2), vy=plvy/(np.pi*2), vz=plvz/(np.pi*2))
+
+(flag, mass, radius, [plx,ply,plz],[plvx,plvy,plvz]) = sbd.query_horizons_planets(obj='saturn',epoch=epoch)
+if flag: sim.add(m=mass, x=plx, y=ply, z=plz, vx=plvx/(np.pi*2), vy=plvy/(np.pi*2), vz=plvz/(np.pi*2))
+
+(flag, mass, radius, [plx,ply,plz],[plvx,plvy,plvz]) = sbd.query_horizons_planets(obj='uranus',epoch=epoch)
+if flag: sim.add(m=mass, x=plx, y=ply, z=plz, vx=plvx/(np.pi*2), vy=plvy/(np.pi*2), vz=plvz/(np.pi*2))
+
+(flag, mass, radius, [plx,ply,plz],[plvx,plvy,plvz]) = sbd.query_horizons_planets(obj='neptune',epoch=epoch)
+if flag: sim.add(m=mass, x=plx, y=ply, z=plz, vx=plvx/(np.pi*2), vy=plvy/(np.pi*2), vz=plvz/(np.pi*2))
+
+assert len(sim.particles) == 9, "Error adding planets"
+
+sim.save_to_file(str(integration_path/"planets.bin"))
 # %%
 sim = rb.Simulation(str(integration_path/'planets.bin'))
 sim.move_to_com()
@@ -35,10 +72,10 @@ sim.dt = ps[1].P/10.
 sim.ri_whfast.safe_mode = 0
 
 # Tfin_approx = 5e7*ps[4].P
-Tfin_approx = 2e8*np.pi*2
+Tfin_approx = 1e8*np.pi*2
 total_steps = np.ceil(Tfin_approx / sim.dt)
 Tfin = total_steps * sim.dt + sim.dt
-Nout = 20_000
+Nout = 40_000
 
 sim_file = integration_path / f"planet_integration.{int(Tfin_approx)}.{int(Nout)}.sa"
 sim.save_to_file(str(sim_file), step=int(np.floor(total_steps/Nout)), delete_file=True)
