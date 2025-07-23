@@ -72,12 +72,12 @@ sim.dt = ps[1].P/10.
 sim.ri_whfast.safe_mode = 0
 
 # Tfin_approx = 5e7*ps[4].P
-Tfin_approx = 1e8*np.pi*2
+Tfin_approx = 1e7*np.pi*2
 total_steps = np.ceil(Tfin_approx / sim.dt)
 Tfin = total_steps * sim.dt + sim.dt
-Nout = 40_000
+Nout = 8_192
 
-sim_file = integration_path / f"planet_integration.{int(Tfin_approx)}.{int(Nout)}.sa"
+sim_file = integration_path / f"planet_integration.{int(Tfin_approx / (2*np.pi))}.{int(Nout)}.sa"
 sim.save_to_file(str(sim_file), step=int(np.floor(total_steps/Nout)), delete_file=True)
 sim.integrate(Tfin, exact_finish_time=0)
 # %%

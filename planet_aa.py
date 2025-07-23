@@ -106,7 +106,7 @@ def load_sim(path, filter_freq=None):
 # %%
 # train_sim = load_sim(dataset_path / "planet_integration.59088753087.500000.sa")
 # train_sim = load_sim(dataset_path / "planet_integration.628318530.50000.sa", filter_freq=None)
-train_sim = load_sim(dataset_path / "planet_integration.628318530.40000.sa", filter_freq=200)
+train_sim = load_sim(dataset_path / "planet_integration.10000000.8192.sa", filter_freq=200)
 # train_sim = load_sim(dataset_path / "planet_integration.sa")
 print(train_sim['time'].shape, train_sim['time'][-1] * TO_YEAR)
 # keep_first = int(train_sim['time'].shape[0]*0.9)
@@ -158,7 +158,7 @@ g_vec[6] = list(planet_ecc_fmft['Uranus'].keys())[1]
 g_vec[7] = list(planet_ecc_fmft['Neptune'].keys())[0]
 
 s_vec[0] = list(planet_inc_fmft['Mercury'].keys())[0]
-s_vec[1] = list(planet_inc_fmft['Venus'].keys())[0]
+s_vec[1] = list(planet_inc_fmft['Venus'].keys())[5]
 s_vec[2] = list(planet_inc_fmft['Earth'].keys())[1]
 s_vec[3] = list(planet_inc_fmft['Mars'].keys())[0]
 s_vec[4] = list(planet_inc_fmft['Jupiter'].keys())[0]
@@ -271,7 +271,7 @@ def objective(R, G, m):
     # on_diag_loss = (jnp.diag(R) - 1) ** 2
     # on_diag_loss = on_diag_loss.sum()
 
-    loss = rotation_loss*1e-1 + J_loss*1e-2 + off_diag_loss * 1e-3 #+ on_diag_loss * 1e-1
+    loss = rotation_loss*1e-1 + J_loss*1e-2 #+ off_diag_loss * 1e-3 #+ on_diag_loss * 1e-1
     return loss
 
 obj_and_grad = jax.jit(jax.value_and_grad(lambda R: objective(R, sim['x'], masses)))
@@ -298,28 +298,6 @@ for i, pl in enumerate(planets):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 # %%
-# def objective(R, G, m):
-#     R = jnp.reshape(R, (N,N))
-
-#     rotation_loss = ((jnp.eye(N) - R @ R.T) ** 2).sum() + (jnp.linalg.det(R) - 1) ** 2
-
-#     Theta = R.T @ G
-
-#     J_approx = jnp.abs(Theta).mean(axis=1)
-#     J_loss = ((jnp.abs(Theta) - J_approx[..., None]) ** 2).sum()
-
-#     off_diag_weight = 1 / jnp.pow(jnp.outer(J_approx, J_approx), 1/2)
-#     off_diag_weight /= off_diag_weight.max()
-#     off_diag_weight = jnp.fill_diagonal(off_diag_weight, off_diag_weight.max()*5, inplace=False)
-#     off_diag_loss = (((jnp.ones((N,N))-jnp.eye(N)) * R.T * off_diag_weight) ** 2).sum()
-#     # off_diag_loss = (((R.T - jnp.eye(N)) ** 2) * off_diag_weight).sum()
-
-#     # on_diag_loss = (jnp.diag(R) - 1) ** 2
-#     # on_diag_loss = on_diag_loss.sum()
-
-#     loss = rotation_loss*1e1 + J_loss*1e1 + off_diag_loss * 1e-1 #+ on_diag_loss * 1e-1
-#     return loss
-
 obj_and_grad = jax.jit(jax.value_and_grad(lambda R: objective(R, sim['y'], masses)))
 
 sol = minimize(obj_and_grad, ecc_rotation_matrix_T.reshape(-1), options={'gtol': 1e-8, 'disp': True}, jac=True)
@@ -905,12 +883,12 @@ plt.show()
 # %%
 # script X matching action variable in Mogavero & Laskar (2023)
 # sX = np.real(sim['x'] * np.conj(sim['x']))
-# sX = np.real(Psi[:N] * np.conj(Psi[:N]))
-sX = np.real(Psi_filt[:N] * np.conj(Psi_filt[:N]))
+sX = np.real(Psi[:N] * np.conj(Psi[:N]))
+# sX = np.real(Psi_filt[:N] * np.conj(Psi_filt[:N]))
 # script Psi
 # sPsi = np.real(sim['y'] * np.conj(sim['y']))
-# sPsi = np.real(Psi[N:] * np.conj(Psi[N:]))
-sPsi = np.real(Psi_filt[N:] * np.conj(Psi_filt[N:]))
+sPsi = np.real(Psi[N:] * np.conj(Psi[N:]))
+# sPsi = np.real(Psi_filt[N:] * np.conj(Psi_filt[N:]))
 # %%
 gamma_0 = np.array([1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0])
 C_ecc = gamma_0[:N] @ sX + gamma_0[N:] @ sPsi
@@ -959,7 +937,7 @@ sol = dual_annealing(obj_no_grad, bounds=list(zip(lw, up)))
 gamma_n = sol.x.round()
 print(gamma_n)
 # %%
-# plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
+plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
 plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
 # plt.plot(t, C_inc_hat - C_inc_hat.mean(), label=r"$C_{inc}$", c="tab:orange")
 # plt.plot(t, C_2_hat - C_2_hat.mean(), label=r"$\hat C_{2}$", c="tab:red")
