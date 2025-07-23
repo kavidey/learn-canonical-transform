@@ -725,15 +725,25 @@ for i, pl in enumerate(psi_planet_list):
     axs[1][i].set_aspect('equal')
     # symmetrize_axes(axs[1][i])
 # %%
-fig, axs = plt.subplots(2, N,figsize=(15,5))
+fig, axs = plt.subplots(2, N,figsize=(20,5))
 for i, pl in enumerate(planets + ("Asteroid",)):
     axs[0][i].set_title(pl)
-    axs[0][i].plot(sim['time'][100:], Psi_filt[i][100:] * np.conj(Psi_filt[i])[100:])
+    # axs[0][i].plot(sim['time'][100:], sim['x'][i][100:] * np.conj(sim['x'][i])[100:], label='Original Coordinate')
+    # axs[1][i].plot(sim['time'][100:], sim['y'][i][100:] * np.conj(sim['y'][i])[100:])
+
+    axs[0][i].plot(sim['time'][100:], Psi[i][100:] * np.conj(Psi[i])[100:], label='After Rotation')
+    axs[1][i].plot(sim['time'][100:], Psi[i+N][100:] * np.conj(Psi[i+N])[100:])
+
+    axs[0][i].plot(sim['time'][100:], Psi_filt[i][100:] * np.conj(Psi_filt[i])[100:], label='After lasers')
     axs[1][i].plot(sim['time'][100:], Psi_filt[i+N][100:] * np.conj(Psi_filt[i+N])[100:])
-    # axs[0][i].set_ylim(bottom=0)
-    # axs[1][i].set_ylim(bottom=0)
+
+    
+    axs[0][i].set_ylim(-axs[0][i].get_ylim()[1] / 10, axs[0][i].get_ylim()[1] * 1.5)
+    axs[1][i].set_ylim(-axs[1][i].get_ylim()[1] / 10, axs[1][i].get_ylim()[1] * 1.5)
 axs[0][0].set_ylabel("Eccentricity")
 axs[1][0].set_ylabel("Inclination")
+axs[0][0].legend()
+plt.show()
 # %%
 # sol = minimize(objective, inc_rotation_matrix_T.reshape(-1), args=(sim['F'], masses), options={'gtol': 1e-8, 'disp': True})
 # inc_rotation_matrix_opt_T = sol.x.reshape(5,5)
