@@ -649,8 +649,6 @@ s_amp[7] = planet_inc_fmft['Neptune'][s_vec[7]]
 omega_vec = np.concat([g_vec, s_vec])
 omega_amp = np.concat([g_amp, s_amp])
 
-s_conserved_idx = np.argmin(np.abs(omega_vec))
-
 print(np.array([5.535, 7.437, 17.357, 17.905, 4.257, 28.77, 3.088, 0.671] + [-5.624, -7.082, -18.837, -17.749, 0.0, -26.348, -2.993, -0.692]))
 print((omega_vec * TO_ARCSEC_PER_YEAR).round(3))
 print(omega_amp)
@@ -678,7 +676,7 @@ def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None):
     return planet_fmft
 planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi, N=14, display=True)
 # %%
-def get_k_vecs(order, pl_idx, s_conserved_idx, N, include_negative=False):
+def get_k_vecs(order, pl_idx, skip_idx, N, include_negative=False):
     assert order % 2 == 1, "Order must be odd"
     possible_k = []
 
@@ -700,12 +698,12 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N, include_negative=False):
                         continue
                     if c==b:
                         continue
+                    if a in skip_idx or b in skip_idx or c in skip_idx:
+                        continue
                     k = np.zeros(N*2, dtype=int)
                     k[a] +=1
                     k[b] +=1
                     k[c] -=1
-                    if k[s_conserved_idx] != 0:
-                        continue
                     possible_k.append(k)
     
     # FIFTH ORDER
@@ -719,14 +717,14 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N, include_negative=False):
                                 continue
                             if e==a or e==b or e==c:
                                 continue
+                            if a in skip_idx or b in skip_idx or c in skip_idx or d in skip_idx or e in skip_idx:
+                                continue
                             k = np.zeros(N*2, dtype=int)
                             k[a] +=1
                             k[b] +=1
                             k[c] +=1
                             k[d] -=1
                             k[e] -=1
-                            if k[s_conserved_idx] != 0:
-                                continue
                             possible_k.append(k)
     # SEVENTH ORDER
     if order == 7:
@@ -741,6 +739,8 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N, include_negative=False):
                                         continue
                                     if g==a or g==b or g==c or g==d:
                                         continue
+                                    if a in skip_idx or b in skip_idx or c in skip_idx or d in skip_idx or e in skip_idx or f in skip_idx or g in skip_idx:
+                                        continue
                                     k = np.zeros(N*2, dtype=int)
                                     k[a] +=1
                                     k[b] +=1
@@ -749,8 +749,6 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N, include_negative=False):
                                     k[e] -=1
                                     k[f] -=1
                                     k[g] -=1
-                                    if k[s_conserved_idx] != 0:
-                                        continue
                                     possible_k.append(k)
 
     possible_k = np.array(possible_k)
@@ -758,7 +756,7 @@ def get_k_vecs(order, pl_idx, s_conserved_idx, N, include_negative=False):
         possible_k = np.concat((possible_k, -possible_k), axis=0)
     return possible_k
 
-def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False, omega_pct_thresh=1e-4, omega_abs_thresh=1e-3):
+def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False, omega_pct_thresh=1e-4, omega_abs_thresh=1e-3, skip_idx=[]):
     combs = []
     for i,pl in enumerate(pl_list):
         if display:
@@ -767,24 +765,32 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
             print("-"*len(pl))
             print("kvec \t\t\t\t\t omega \t err. \t amplitude")
         comb = {}
-        for k in get_k_vecs(order, i, s_conserved_idx, N, include_negative=include_negative):
+        for k in get_k_vecs(order, i, skip_idx, N, include_negative=include_negative):
             omega = k @ omega_vec
-            # print(omega*TO_ARCSEC_PER_YEAR, k)
+
+            if order != 1 and np.min(np.abs(omega_vec/omega-1)) < omega_pct_thresh:
+                continue
+
             omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
             omega_pct_error = np.abs(omega_N/omega-1)
             omega_abs_error = np.abs(omega_N - omega)
+
+            # if the frequency is close to a frequency that exists in the planet
             if omega_pct_error<omega_pct_thresh and omega_abs_error < omega_abs_thresh:
+                # check if we already found a kvec that matches this frequency
                 omega_N_exists = False
                 to_del = []
                 for old_k,(_, old_omega, old_err) in comb.items():
                     if old_omega == omega_N:
                         omega_N_exists = True
+                        # if our new kvec is better than the old one, delete it
                         if old_err > omega_pct_error:
                             # del comb[old_k]
                             to_del.append(old_k)
                             omega_N_exists = False
                 for d in to_del:
                     del comb[d]
+                # add new kvec if it is better or there wasn't an existing one with the same frequency
                 if not omega_N_exists:
                     comb[tuple(k)] = (amp, omega_N, omega_pct_error)
                     if display: print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_pct_error,np.abs(amp)))
@@ -818,6 +824,19 @@ trans_fns = []
 iterations = [1,3]
 # iterations = [1,3,5]
 # iterations = [1,3,5,7]
+
+skip_planet_idx = []
+skip_planet_idx.append(int(np.argmin(np.abs(omega_vec))))
+
+print("planets that satisfy epsilon assumption")
+for i, pl in enumerate(psi_planet_list):
+    amps = [v for k, v in planet_fmft[pl].items()]
+    amp_ratio = np.abs(amps[0]) / np.abs(amps[1])
+    if amp_ratio < 4:
+        print(pl)
+        skip_planet_idx.append(i)
+skip_planet_idx.sort()
+# %%
 for i,order in enumerate(iterations):
     print("#"*10, f"ITERATION {i+1} - ORDER {order}", "#"*10)
     last_x_val = apply_sequential_transforms(x_val, trans_fns)
@@ -874,10 +893,9 @@ for i, pl in enumerate(planets):
     axs[0][i].plot(sim['time'][100:], Psi[i][100:] * np.conj(Psi[i])[100:], label='After Rotation')
     axs[1][i].plot(sim['time'][100:], Psi[i+N][100:] * np.conj(Psi[i+N])[100:])
 
-    axs[0][i].plot(sim['time'][100:], Psi_filt[i][100:] * np.conj(Psi_filt[i])[100:], label='After lasers')
-    axs[1][i].plot(sim['time'][100:], Psi_filt[i+N][100:] * np.conj(Psi_filt[i+N])[100:])
+    axs[0][i].plot(sim['time'][100:], Psi_filt[i][100:] * np.conj(Psi_filt[i])[100:], label='After lasers', alpha=0.8)
+    axs[1][i].plot(sim['time'][100:], Psi_filt[i+N][100:] * np.conj(Psi_filt[i+N])[100:], alpha=0.8)
 
-    
     axs[0][i].set_ylim(-axs[0][i].get_ylim()[1] / 10, axs[0][i].get_ylim()[1] * 1.5)
     axs[1][i].set_ylim(-axs[1][i].get_ylim()[1] / 10, axs[1][i].get_ylim()[1] * 1.5)
 axs[0][0].set_ylabel("Eccentricity")
@@ -887,12 +905,12 @@ plt.show()
 # %%
 # script X matching action variable in Mogavero & Laskar (2023)
 # sX = np.real(sim['x'] * np.conj(sim['x']))
-sX = np.real(Psi[:N] * np.conj(Psi[:N]))
-# sX = np.real(Psi_filt[:N] * np.conj(Psi_filt[:N]))
+# sX = np.real(Psi[:N] * np.conj(Psi[:N]))
+sX = np.real(Psi_filt[:N] * np.conj(Psi_filt[:N]))
 # script Psi
 # sPsi = np.real(sim['y'] * np.conj(sim['y']))
-sPsi = np.real(Psi[N:] * np.conj(Psi[N:]))
-# sPsi = np.real(Psi_filt[N:] * np.conj(Psi_filt[N:]))
+# sPsi = np.real(Psi[N:] * np.conj(Psi[N:]))
+sPsi = np.real(Psi_filt[N:] * np.conj(Psi_filt[N:]))
 # %%
 gamma_0 = np.array([1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0])
 C_ecc = gamma_0[:N] @ sX + gamma_0[N:] @ sPsi
@@ -967,7 +985,7 @@ def objective(A, X, As):
     J_loss = ((jnp.abs(J) - J_approx) ** 2)
     J_loss = J_loss.sum()
 
-    return J_loss + int_loss*5e-1 + non_zero_loss*1e-3 + orthogonal_loss * 5e0
+    return J_loss + int_loss*5e-1 + non_zero_loss*1e-3 + orthogonal_loss * 2e1
 obj_no_grad = jax.jit(objective)
 
 found_combs = jnp.zeros((0, N*2))
