@@ -9,9 +9,11 @@ import matplotlib.pyplot as plt
 from IPython.display import clear_output
 from scipy.optimize import minimize
 from scipy.optimize import dual_annealing
+from scipy.optimize import linear_sum_assignment
 import scipy.signal
 
 import rebound as rb
+from reboundx import constants as rbx_constants
 
 from celmech.nbody_simulation_utilities import get_simarchive_integration_results
 from celmech.miscellaneous import frequency_modified_fourier_transform as fmft
@@ -106,7 +108,7 @@ def load_sim(path, filter_freq=None):
 # %%
 # train_sim = load_sim(dataset_path / "planet_integration.59088753087.500000.sa")
 # train_sim = load_sim(dataset_path / "planet_integration.628318530.50000.sa", filter_freq=None)
-train_sim = load_sim(dataset_path / "planet_integration.10000000.8192.sa", filter_freq=200)
+train_sim = load_sim(dataset_path / "planet_integration.10000000.16666.sa")#, filter_freq=200)
 # train_sim = load_sim(dataset_path / "planet_integration.sa")
 print(train_sim['time'].shape, train_sim['time'][-1] * TO_YEAR)
 # keep_first = int(train_sim['time'].shape[0]*0.9)
@@ -130,7 +132,7 @@ for i,pl in enumerate(planets):
     planet_e_freqs = np.array(list(planet_ecc_fmft[pl].keys()))
     planet_e_freqs_arcsec_per_yr = planet_e_freqs * TO_ARCSEC_PER_YEAR
 
-    planet_inc_fmft[pl] = fmft(sim['time'],sim['y'][i],8)
+    planet_inc_fmft[pl] = fmft(sim['time'],sim['y'][i],14)
     planet_inc_freqs = np.array(list(planet_inc_fmft[pl].keys()))
     planet_inc_freqs_arcsec_per_yr = planet_inc_freqs * TO_ARCSEC_PER_YEAR
 
@@ -158,7 +160,7 @@ g_vec[6] = list(planet_ecc_fmft['Uranus'].keys())[1]
 g_vec[7] = list(planet_ecc_fmft['Neptune'].keys())[0]
 
 s_vec[0] = list(planet_inc_fmft['Mercury'].keys())[0]
-s_vec[1] = list(planet_inc_fmft['Venus'].keys())[5]
+s_vec[1] = list(planet_inc_fmft['Venus'].keys())[12]
 s_vec[2] = list(planet_inc_fmft['Earth'].keys())[1]
 s_vec[3] = list(planet_inc_fmft['Mars'].keys())[0]
 s_vec[4] = list(planet_inc_fmft['Jupiter'].keys())[0]
@@ -218,8 +220,20 @@ print("inc")
 print(inc_rotation_matrix_T)
 # %%
 lsys = LaplaceLagrangeSystem.from_Simulation(rb_sim)
-ecc_rotation_matrix_T, _ = lsys.diagonalize_eccentricity()
-inc_rotation_matrix_T, _ = lsys.diagonalize_inclination()
+lsys.add_general_relativity_correction(rbx_constants.C) # add GR correction
+
+# calculate rotation matricies and reorder entries to attempt preserve mode order
+ecc_rotation_matrix_T, ecc_eigval = lsys.diagonalize_eccentricity()
+ecc_eigval = np.diag(ecc_eigval)
+ecc_eigguess = np.diag(lsys.Neccentricity_matrix)
+_, ecc_order = linear_sum_assignment(np.abs(ecc_eigval[..., None] - ecc_eigguess[None, ...]).T)
+ecc_rotation_matrix_T = ecc_rotation_matrix_T[:,ecc_order]
+
+inc_rotation_matrix_T, inc_eigval = lsys.diagonalize_inclination()
+inc_eigval = np.diag(inc_eigval)
+inc_eigguess = np.diag(lsys.Ninclination_matrix)
+_, inc_order = linear_sum_assignment(np.abs(inc_eigval[..., None] - inc_eigguess[None, ...]).T)
+inc_rotation_matrix_T = inc_rotation_matrix_T[:, inc_order]
 
 print("ecc")
 print(ecc_rotation_matrix_T)
@@ -937,7 +951,7 @@ sol = dual_annealing(obj_no_grad, bounds=list(zip(lw, up)))
 gamma_n = sol.x.round()
 print(gamma_n)
 # %%
-plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
+# plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
 plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
 # plt.plot(t, C_inc_hat - C_inc_hat.mean(), label=r"$C_{inc}$", c="tab:orange")
 # plt.plot(t, C_2_hat - C_2_hat.mean(), label=r"$\hat C_{2}$", c="tab:red")
