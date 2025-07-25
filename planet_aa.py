@@ -152,15 +152,15 @@ s_vec = np.zeros(8)
 
 g_vec[0] = list(planet_ecc_fmft['Mercury'].keys())[0]
 g_vec[1] = list(planet_ecc_fmft['Venus'].keys())[0]
-g_vec[2] = list(planet_ecc_fmft['Earth'].keys())[2]
-g_vec[3] = list(planet_ecc_fmft['Mars'].keys())[1]
+g_vec[2] = list(planet_ecc_fmft['Earth'].keys())[3]
+g_vec[3] = list(planet_ecc_fmft['Mars'].keys())[0]
 g_vec[4] = list(planet_ecc_fmft['Jupiter'].keys())[0]
 g_vec[5] = list(planet_ecc_fmft['Saturn'].keys())[0]
 g_vec[6] = list(planet_ecc_fmft['Uranus'].keys())[1]
 g_vec[7] = list(planet_ecc_fmft['Neptune'].keys())[0]
 
-s_vec[0] = list(planet_inc_fmft['Mercury'].keys())[0]
-s_vec[1] = list(planet_inc_fmft['Venus'].keys())[12]
+s_vec[0] = list(planet_inc_fmft['Mercury'].keys())[1]
+s_vec[1] = list(planet_inc_fmft['Venus'].keys())[2]
 s_vec[2] = list(planet_inc_fmft['Earth'].keys())[1]
 s_vec[3] = list(planet_inc_fmft['Mars'].keys())[0]
 s_vec[4] = list(planet_inc_fmft['Jupiter'].keys())[0]
@@ -324,6 +324,12 @@ print("original\n", inc_rotation_matrix_T)
 print("optimized\n", inc_rotation_matrix_opt_T)
 
 Theta = (np.linalg.inv(inc_rotation_matrix_opt_T) @ sim['y'])
+
+##### TODO: FIX FOR SOLAR SYSTEM ONLY -- REMOVE FOR OTHER SYSTEMS #####
+temp = Theta[2].copy()
+Theta[2] = Theta[3].copy()
+Theta[3] = temp
+#######################################################################
 
 fig, axs = plt.subplots(2,8,figsize=(20, 5))
 plt.suptitle("Inclination", fontsize=14)
@@ -760,7 +766,7 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
         for k in get_k_vecs(order, i, skip_idx, N, include_negative=include_negative):
             omega = k @ omega_vec
 
-            if order != 1 and np.min(np.abs(omega_vec/omega-1)) < omega_pct_thresh:
+            if order != 1 and (np.abs(omega_vec/omega-1) < 1e-3).any():
                 continue
 
             omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
@@ -813,19 +819,19 @@ trans_fns = []
 # iterations = [3]
 # iterations = [5]
 # iterations = [7]
-iterations = [1,3]
-# iterations = [1,3,5]
+# iterations = [1,3]
+iterations = [1,3,5]
 # iterations = [1,3,5,7]
 
 skip_planet_idx = []
 skip_planet_idx.append(int(np.argmin(np.abs(omega_vec))))
 
-print("planets that satisfy epsilon assumption")
+print("planets that don't epsilon assumption")
 for i, pl in enumerate(psi_planet_list):
     amps = [v for k, v in planet_fmft[pl].items()]
     amp_ratio = np.abs(amps[0]) / np.abs(amps[1])
-    if amp_ratio < 4:
-        print(pl)
+    if amp_ratio < 5:
+        print(pl, amp_ratio)
         skip_planet_idx.append(i)
 skip_planet_idx.sort()
 # %%
@@ -833,7 +839,7 @@ for i,order in enumerate(iterations):
     print("#"*10, f"ITERATION {i+1} - ORDER {order}", "#"*10)
     last_x_val = apply_sequential_transforms(x_val, trans_fns)
     last_fmft = get_planet_fmft(psi_planet_list, sim['time'], last_x_val, 14, display=False)
-    combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True, include_negative=False, omega_pct_thresh=5e-5)
+    combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True, include_negative=False, omega_pct_thresh=2e-5)
 
     x_bar_i = [sympy.Symbol(f"\\bar X^{{({i+1})}}_"+str(j)) for j in range(N*2)]
 
@@ -862,7 +868,8 @@ b, a = scipy.signal.butter(10, 100, 'low', fs=fs_arcsec_per_yr) # type: ignore[r
 Psi_filt = Psi_trans
 # plt.plot(np.real(Psi_filt[3]), np.imag(Psi_filt[3]))
 # %%
-new_planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi_trans, N=14, display=True, compareto=last_fmft)
+# new_planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi_trans, N=14, display=True, compareto=last_fmft)
+new_planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi_trans, N=14, display=True, compareto=planet_fmft)
 # %%
 fig, axs = plt.subplots(2,2*N,figsize=(30, 5))
 for i, pl in enumerate(psi_planet_list):
@@ -897,12 +904,12 @@ plt.show()
 # %%
 # script X matching action variable in Mogavero & Laskar (2023)
 # sX = np.real(sim['x'] * np.conj(sim['x']))
-sX = np.real(Psi[:N] * np.conj(Psi[:N]))
-# sX = np.real(Psi_filt[:N] * np.conj(Psi_filt[:N]))
+# sX = np.real(Psi[:N] * np.conj(Psi[:N]))
+sX = np.real(Psi_filt[:N] * np.conj(Psi_filt[:N]))
 # script Psi
 # sPsi = np.real(sim['y'] * np.conj(sim['y']))
-sPsi = np.real(Psi[N:] * np.conj(Psi[N:]))
-# sPsi = np.real(Psi_filt[N:] * np.conj(Psi_filt[N:]))
+# sPsi = np.real(Psi[N:] * np.conj(Psi[N:]))
+sPsi = np.real(Psi_filt[N:] * np.conj(Psi_filt[N:]))
 # %%
 gamma_0 = np.array([1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0])
 C_ecc = gamma_0[:N] @ sX + gamma_0[N:] @ sPsi
@@ -919,7 +926,7 @@ C_2_hat = C_2 / (np.linalg.norm(gamma_2) * C_0)
 
 t = sim['time'] / (2*np.pi*1e6)
 
-# plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
+plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
 plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
 plt.plot(t, C_inc_hat - C_inc_hat.mean(), label=r"$C_{inc}$", c="tab:orange")
 plt.plot(t, C_2_hat - C_2_hat.mean(), label=r"$\hat C_{2}$", c="tab:red")
@@ -930,7 +937,10 @@ plt.show()
 # %%
 def objective(A, X):
     int_loss = ((A - A.round())**2).sum()
-    non_zero_loss = - (jnp.abs(A).sum() / jnp.abs(A).max())
+    # non_zero_loss = - (jnp.abs(A).sum() / jnp.abs(A).max())
+    non_zero_loss = -(jnp.abs(A).max())
+    # orthogonal_loss = jnp.stack((gamma_1, gamma_2)) @ 
+    
     J = A @ X #/ jnp.linalg.norm(A)
     J = J / C_0
 
@@ -938,7 +948,7 @@ def objective(A, X):
     J_loss = ((jnp.abs(J) - J_approx) ** 2)
     J_loss = J_loss.sum()
 
-    return J_loss + int_loss*5e-1 + non_zero_loss*1e-3
+    return J_loss + int_loss*5e-1 + non_zero_loss*1e0 #+ orthogonal_loss*1.2e1
 obj_no_grad = jax.jit(lambda A: objective(A, jnp.concat((sX, sPsi))))
 obj_and_grad = jax.jit(jax.value_and_grad(lambda A: objective(A, jnp.concat((sX, sPsi)))))
 
@@ -951,10 +961,10 @@ sol = dual_annealing(obj_no_grad, bounds=list(zip(lw, up)))
 gamma_n = sol.x.round()
 print(gamma_n)
 # %%
-# plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
+plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
 plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
-# plt.plot(t, C_inc_hat - C_inc_hat.mean(), label=r"$C_{inc}$", c="tab:orange")
-# plt.plot(t, C_2_hat - C_2_hat.mean(), label=r"$\hat C_{2}$", c="tab:red")
+plt.plot(t, C_inc_hat - C_inc_hat.mean(), label=r"$C_{inc}$", c="tab:orange")
+plt.plot(t, C_2_hat - C_2_hat.mean(), label=r"$\hat C_{2}$", c="tab:red")
 
 C_opt = gamma_n @ np.concat((sX, sPsi))
 C_opt_hat = C_opt / (np.linalg.norm(gamma_n) * C_0)
@@ -977,7 +987,7 @@ def objective(A, X, As):
     J_loss = ((jnp.abs(J) - J_approx) ** 2)
     J_loss = J_loss.sum()
 
-    return J_loss + int_loss*5e-1 + non_zero_loss*1e-3 + orthogonal_loss * 2e1
+    return J_loss + int_loss*5e-1 + non_zero_loss*1e-3 + orthogonal_loss * 1.2e1
 obj_no_grad = jax.jit(objective)
 
 found_combs = jnp.zeros((0, N*2))
@@ -992,7 +1002,7 @@ for i in tqdm(range(desired_combs)):
     found_combs = jnp.vstack((found_combs, sol.x.round()))
 print(found_combs @ found_combs.T)
 # %%
-# plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
+plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
 plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
 
 for i,gamma_n in enumerate(jnp.flip(found_combs, axis=0)):
