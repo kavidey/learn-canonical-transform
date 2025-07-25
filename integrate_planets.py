@@ -77,7 +77,7 @@ ps = sim.particles
 # %%
 sim.integrator='whfast'
 # sim.dt = ps[1].P/10.
-sim.dt = (1.1 / 365.25) * np.pi*2
+sim.dt = (1.1 / 365.25) * np.pi*2 # could set to 8 days
 sim.ri_whfast.safe_mode = 0
 
 Tfin_approx = -1e7*np.pi*2
