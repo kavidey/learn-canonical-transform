@@ -11,6 +11,7 @@ from scipy.optimize import minimize
 from scipy.optimize import dual_annealing
 from scipy.optimize import linear_sum_assignment
 import scipy.signal
+from sklearn.decomposition import PCA, KernelPCA
 
 import rebound as rb
 from reboundx import constants as rbx_constants
@@ -916,7 +917,7 @@ C_ecc = gamma_0[:N] @ sX + gamma_0[N:] @ sPsi
 
 gamma_1 = np.array([0,0,0,0,0,0,0,0,1,1,1,1,0,0,0,0])
 C_inc = gamma_1[:N] @ sX + gamma_1[N:] @ sPsi
-C_0 = (C_inc + C_ecc)[-1]
+C_0 = (C_inc + C_ecc)[0]
 
 C_inc_hat = C_inc / (np.linalg.norm(gamma_1) * C_0)
 
@@ -934,6 +935,34 @@ plt.xlim(left=t[100], right=t[-1])
 plt.legend()
 plt.xlabel("Myr")
 plt.show()
+# %%
+X = np.concat((sX, sPsi))
+X = X - X.mean(axis=-1)[..., None]
+X /= np.max(X)
+pca = PCA().fit(np.concat((sX, sPsi)).T / np.concat((sX, sPsi)).mean())
+
+plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
+plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
+
+found_combs = []
+for i in reversed(range(1, 6)):
+    # gamma_n = pca.components_[-i] / np.median(np.abs(pca.components_[-i]))
+    gamma_n = pca.components_[-i] / (np.max(np.abs(pca.components_[-i])) / 2)
+    gamma_n = gamma_n.round()
+    found_combs.append(gamma_n)
+    C_opt = gamma_n @ np.concat((sX, sPsi))
+    C_opt_hat = C_opt / (np.linalg.norm(gamma_n) * C_0)
+    plt.plot(t, C_opt_hat - C_opt_hat.mean(), label=r"$\hat C_{opt,"+str(i)+"}$")
+
+plt.xlim(left=t[100], right=t[-1])
+plt.legend()
+plt.xlabel("Myr")
+plt.show()
+
+found_combs = np.array(found_combs)
+
+print(found_combs)
+print(found_combs @ found_combs.T)
 # %%
 def objective(A, X):
     int_loss = ((A - A.round())**2).sum()
@@ -960,7 +989,7 @@ sol = dual_annealing(obj_no_grad, bounds=list(zip(lw, up)))
 
 gamma_n = sol.x.round()
 print(gamma_n)
-# %%
+
 plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
 plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
 plt.plot(t, C_inc_hat - C_inc_hat.mean(), label=r"$C_{inc}$", c="tab:orange")
@@ -969,47 +998,6 @@ plt.plot(t, C_2_hat - C_2_hat.mean(), label=r"$\hat C_{2}$", c="tab:red")
 C_opt = gamma_n @ np.concat((sX, sPsi))
 C_opt_hat = C_opt / (np.linalg.norm(gamma_n) * C_0)
 plt.plot(t, C_opt_hat - C_opt_hat.mean(), label=r"$\hat C_{opt}$", c="tab:purple")
-plt.xlim(left=t[100], right=t[-1])
-plt.legend()
-plt.xlabel("Myr")
-plt.show()
-# %%
-def objective(A, X, As):
-    int_loss = ((A - A.round())**2).sum()
-    non_zero_loss = - (jnp.abs(A).sum() / jnp.abs(A).max())
-    # non_zero_loss = -(jnp.abs(A).max())
-    orthogonal_loss = (jnp.abs(As @ A) ** 2).sum()
-
-    J = A @ X
-    J = J / C_0
-
-    J_approx = jnp.abs(J).mean()
-    J_loss = ((jnp.abs(J) - J_approx) ** 2)
-    J_loss = J_loss.sum()
-
-    return J_loss + int_loss*5e-1 + non_zero_loss*1e-3 + orthogonal_loss * 1.2e1
-obj_no_grad = jax.jit(objective)
-
-found_combs = jnp.zeros((0, N*2))
-desired_combs = 5
-
-lw=[-2]*(N*2)
-up=[3]*(N*2)
-
-for i in tqdm(range(desired_combs)):
-    sol = dual_annealing(obj_no_grad, bounds=list(zip(lw, up)), args=(jnp.concat((sX, sPsi)), found_combs))
-    print(sol.x.round())
-    found_combs = jnp.vstack((found_combs, sol.x.round()))
-print(found_combs @ found_combs.T)
-# %%
-plt.plot(t, sX[0]/C_0 - (sX[0]/C_0).mean(), label=r"$\hat \mathcal{X}_1$", c="tab:blue")
-plt.plot(t, sPsi[2]/C_0 - (sPsi[2]/C_0).mean(), label=r"$\hat \mathcal{\Psi}_3$", c="tab:cyan")
-
-for i,gamma_n in enumerate(jnp.flip(found_combs, axis=0)):
-    C_opt = gamma_n @ np.concat((sX, sPsi))
-    C_opt_hat = C_opt / (np.linalg.norm(gamma_n) * C_0)
-    plt.plot(t, C_opt_hat - C_opt_hat.mean(), label=r"$\hat C_{opt,"+str(i)+"}$")
-
 plt.xlim(left=t[100], right=t[-1])
 plt.legend()
 plt.xlabel("Myr")
