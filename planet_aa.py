@@ -16,7 +16,7 @@ from sklearn.decomposition import PCA, KernelPCA
 import rebound as rb
 from reboundx import constants as rbx_constants
 
-from celmech.nbody_simulation_utilities import get_simarchive_integration_results
+from utils import get_simarchive_integration_results
 from celmech.miscellaneous import frequency_modified_fourier_transform as fmft
 from celmech.secular import LaplaceLagrangeSystem
 
@@ -60,13 +60,12 @@ def symmetrize_axes(axes):
     axes.set_ylim(ymin=-ax_max, ymax=ax_max)
     axes.set_xlim(xmin=-ax_max, xmax=ax_max)
 # %%
-# dataset_path = Path('datasets') / 'kat_planet_integration'
-dataset_path = Path('datasets') / 'planet_integration'
+dataset_path = Path('datasets') / 'solar_system_long' / 'sim'
 TO_ARCSEC_PER_YEAR = 60*60*180/np.pi * (2*np.pi)
 TO_YEAR = 1/(2*np.pi)
 N = 8
 # %%
-rb_sim = rb.Simulation(str(dataset_path/'planets.bin'))
+rb_sim = rb.Simulation(str(dataset_path/'../ss.bin'))
 masses = np.array(list(map(lambda ps: ps.m, rb_sim.particles))[1:], dtype=np.float64)
 
 def load_sim(path, filter_freq=None):
@@ -101,29 +100,17 @@ def load_sim(path, filter_freq=None):
 
     return results
 # %%
-# full_sim = load_sim(dataset_path / "planet_integration.236355012349.500000.sa")
-# print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
-# for key, val in full_sim.items():
-#     full_sim[key] = val[..., :24081]
-# print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
-# %%
-# train_sim = load_sim(dataset_path / "planet_integration.59088753087.500000.sa")
-# train_sim = load_sim(dataset_path / "planet_integration.628318530.50000.sa", filter_freq=None)
-train_sim = load_sim(dataset_path / "planet_integration.10000000.16666.sa")#, filter_freq=200)
-# train_sim = load_sim(dataset_path / "planet_integration.sa")
-print(train_sim['time'].shape, train_sim['time'][-1] * TO_YEAR)
-# keep_first = int(train_sim['time'].shape[0]*0.9)
-# keep_first = int(50e3)
-# keep_first = train_sim['time'].shape[0] - 1
-# print(train_sim['time'][keep_first] * TO_YEAR)
-# sim = {}
-# for key, val in train_sim.items():
-#     sim[key] = val[..., :keep_first]
-# train_sim = sim
-sim = train_sim
+full_sim = load_sim(dataset_path / "solarsystem_m762.bin")
+print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
 
-fs_arcsec_per_yr = (TO_ARCSEC_PER_YEAR / np.gradient(train_sim['time']).mean()) * 2 * np.pi
+keep_first = np.sum(full_sim['time'] < 50e6 / TO_YEAR)
+sim = {}
+for key, val in full_sim.items():
+    sim[key] = val[..., :keep_first]
+
+fs_arcsec_per_yr = (TO_ARCSEC_PER_YEAR / np.gradient(sim['time']).mean()) * 2 * np.pi
 print("sample rate (\"/yr):", fs_arcsec_per_yr)
+print("dt (yr):", np.gradient(sim['time']).mean() / (2 * np.pi))
 # %%
 planets = ("Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
 planet_ecc_fmft = dict()
@@ -827,7 +814,7 @@ iterations = [1,3,5]
 skip_planet_idx = []
 skip_planet_idx.append(int(np.argmin(np.abs(omega_vec))))
 
-print("planets that don't epsilon assumption")
+print("planets that don't satisfy epsilon assumption")
 for i, pl in enumerate(psi_planet_list):
     amps = [v for k, v in planet_fmft[pl].items()]
     amp_ratio = np.abs(amps[0]) / np.abs(amps[1])
@@ -866,11 +853,12 @@ Psi_trans = apply_sequential_transforms(x_val, trans_fns)
 # %%
 b, a = scipy.signal.butter(10, 100, 'low', fs=fs_arcsec_per_yr) # type: ignore[reportUnknownVariableType]
 # Psi_filt = scipy.signal.lfilter(b, a, Psi_trans)
-Psi_filt = Psi_trans
+# Psi_filt = Psi_trans
+Psi_filt = Psi
 # plt.plot(np.real(Psi_filt[3]), np.imag(Psi_filt[3]))
 # %%
 # new_planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi_trans, N=14, display=True, compareto=last_fmft)
-new_planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi_trans, N=14, display=True, compareto=planet_fmft)
+new_planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi_filt, N=14, display=True, compareto=planet_fmft)
 # %%
 fig, axs = plt.subplots(2,2*N,figsize=(30, 5))
 for i, pl in enumerate(psi_planet_list):
