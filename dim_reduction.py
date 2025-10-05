@@ -93,11 +93,11 @@ def reduce_dim_diffusion(steps, lambdas_red, phis_red, pi):
 
 # def fit_new_data_diffusion(X_new, lambdas, phis, pi, A):
 # %%
-sr_points, sr_color = datasets.make_swiss_roll(n_samples=1000, random_state=0)
+sr_points, sr_color = datasets.make_swiss_roll(n_samples=5000, random_state=0)
 # Add a known amount of noise
 sr_dirs = sr_points / jnp.linalg.norm(sr_points, axis=1, keepdims=True)
-radial_noise = rng.normal(0, 0.5, (sr_points.shape[0],1))
-# sr_points += sr_dirs * radial_noise
+radial_noise = rng.normal(0, 0.25, (sr_points.shape[0],1))
+sr_points += sr_dirs * radial_noise
 
 fig = plt.figure(figsize=(8, 6))
 ax = fig.add_subplot(111, projection="3d")
@@ -109,11 +109,65 @@ ax.set_title("Swiss Roll in Ambient Space")
 ax.view_init(azim=-66, elev=12)
 _ = ax.text2D(0.8, 0.05, s="n_samples=1500", transform=ax.transAxes)
 # %%
-lambdas, phis, pi = fit_diffusion(jnp.array(sr_points), 2, 0)
+lambdas, phis, pi = fit_diffusion(jnp.array(sr_points), 1, 0)
 plt.scatter(lambdas, np.arange(lambdas.shape[0]))
 # %%
 n_components = 2
 sr_red = reduce_dim_diffusion(1, lambdas[1:n_components+1], phis[:, 1:n_components+1], pi)
 
 plt.scatter(*sr_red.T, c=sr_color, alpha=0.8)
+# %%
+from pydiffmap import diffusion_map as dm
+
+neighbor_params = {'n_jobs': -1, 'algorithm': 'ball_tree'}
+mydmap = dm.DiffusionMap.from_sklearn(n_evecs=2, k=200, epsilon='bgh', alpha=1.0, neighbor_params=neighbor_params)
+
+dmap = mydmap.fit_transform(sr_points)
+
+plt.scatter(*dmap.T)
+# %%
+from pydiffmap.visualization import embedding_plot, data_plot
+
+embedding_plot(mydmap, dim=2, scatter_kwargs = {'c': dmap[:,0], 'cmap': 'Spectral'})
+data_plot(mydmap, dim=3, scatter_kwargs = {'cmap': 'Spectral'})
+
+plt.show()
+# %%
+import matplotlib.pyplot as plt
+import numpy as np
+
+from mpl_toolkits.mplot3d import Axes3D
+from pydiffmap import diffusion_map as dm
+
+# set parameters
+length_phi = 15   #length of swiss roll in angular direction
+length_Z = 15     #length of swiss roll in z direction
+sigma = 0.1       #noise strength
+m = 10000         #number of samples
+
+# create dataset
+phi = length_phi*np.random.rand(m)
+xi = np.random.rand(m)
+Z = length_Z*np.random.rand(m)
+X = 1./6*(phi + sigma*xi)*np.sin(phi)
+Y = 1./6*(phi + sigma*xi)*np.cos(phi)
+
+swiss_roll = np.array([X, Y, Z]).transpose()
+
+# check that we have the right shape
+print(swiss_roll.shape)
+
+# initialize Diffusion map object.
+neighbor_params = {'n_jobs': -1, 'algorithm': 'ball_tree'}
+
+mydmap = dm.DiffusionMap.from_sklearn(n_evecs=2, k=200, epsilon='bgh', alpha=1.0, neighbor_params=neighbor_params)
+# fit to data and return the diffusion map.
+dmap = mydmap.fit_transform(swiss_roll)
+
+from pydiffmap.visualization import embedding_plot, data_plot
+
+embedding_plot(mydmap, scatter_kwargs = {'c': dmap[:,0], 'cmap': 'Spectral'})
+data_plot(mydmap, dim=3, scatter_kwargs = {'cmap': 'Spectral'})
+
+plt.show()
 # %%
