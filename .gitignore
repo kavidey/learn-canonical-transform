@@ -2,6 +2,8 @@
 __pycache__
 .DS_Store
 datasets
+!datasets/solar_system_long/run.py
+!datasets/solar_system_long/eval.py
 pysr_output
 MPCORB.DAT
 proper_catalog24.dat
