@@ -10,6 +10,7 @@ from multiprocessing import Pool
 from functools import partial
 # %%
 import rebound as rb
+import reboundx
 from celmech.nbody_simulation_utilities import get_canonical_heliocentric_orbits
 
 # modified from celmech
@@ -76,7 +77,13 @@ def _get_rebound_simarchive_integration_results(sa,coordinates):
         sim.integrator_synchronize() # need to syncronize whfast512 sim
         sim_results['time'][i] = sim.t
         orbits = get_orbits(sim)
-        sim_results['Energy'][i] = sim.energy()
+
+        # calculate energy including GR potential
+        rebx = reboundx.Extras(sim)
+        gr = rebx.load_force("gr_potential")
+        gr.params['c'] = 10065.32 # value of C from whfast512 integrator (https://github.com/hannorein/rebound/blob/6a4f95b58e71a69fdefd2ca5bd34097daf026655/src/integrator_whfast512.c#L895)
+        sim_results['Energy'][i] = sim.energy() + rebx.gr_potential_potential(gr)
+
         for j,orbit in enumerate(orbits):
             sim_results['P'][j,i] = orbit.P
             sim_results['d'][j,i] = orbit.d
@@ -106,7 +113,7 @@ if gen_npy_files: npy_dir.mkdir(exist_ok=True)
 def process_sim(d_thresh, e_thresh, f):
     npy_name = npy_dir/(f.stem+".npz")
     if not npy_name.exists():
-        return "", -1, -1, -1
+        # return "", -1, -1, -1
         sim = get_simarchive_integration_results(str(f), coordinates='heliocentric')
 
         if gen_npy_files:
@@ -137,7 +144,17 @@ df = pd.DataFrame(results, columns=['id', 'unstable_time', 'max_d', 'max_e'])
 
 df['unstable_time'].max()
 # %%
+npy_f = npy_dir/(files[20].stem+".npz")
+sim = np.load(npy_f)
+# %%
 import matplotlib.pyplot as plt
+
+E0 = sim["Energy"][0]
+Eerr = np.abs((E0 - sim["Energy"]) / E0)
+plt.plot(sim['time']/(np.pi*2), Eerr)
+plt.yscale("log")
+plt.xscale("log")
+# %%
 for f in files:
     npy_f = npy_dir/(f.stem+".npz")
     if npy_f.exists():
