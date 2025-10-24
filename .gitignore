@@ -4,6 +4,7 @@ __pycache__
 datasets
 !datasets/solar_system_long/run.py
 !datasets/solar_system_long/eval.py
+!datasets/solar_system_long/process_sims.py
 pysr_output
 MPCORB.DAT
 proper_catalog24.dat
