@@ -65,7 +65,7 @@ TO_ARCSEC_PER_YEAR = 60*60*180/np.pi * (2*np.pi)
 TO_YEAR = 1/(2*np.pi)
 N = 8
 # %%
-rb_sim = rb.Simulation(str(dataset_path/'../ss.bin'))
+rb_sim = rb.Simulation(str((dataset_path/'../ss.bin').resolve()))
 masses = np.array(list(map(lambda ps: ps.m, rb_sim.particles))[1:], dtype=np.float64)
 
 def load_sim(path, filter_freq=None):
@@ -103,7 +103,7 @@ def load_sim(path, filter_freq=None):
 full_sim = load_sim(dataset_path / "solarsystem_m762.bin")
 print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
 
-keep_first = np.sum(full_sim['time'] < 50e6 / TO_YEAR)
+keep_first = np.sum(full_sim['time'] < 100e6 / TO_YEAR)
 sim = {}
 for key, val in full_sim.items():
     sim[key] = val[..., :keep_first]
@@ -111,6 +111,10 @@ for key, val in full_sim.items():
 fs_arcsec_per_yr = (TO_ARCSEC_PER_YEAR / np.gradient(sim['time']).mean()) * 2 * np.pi
 print("sample rate (\"/yr):", fs_arcsec_per_yr)
 print("dt (yr):", np.gradient(sim['time']).mean() / (2 * np.pi))
+np.savez_compressed("/tmp/save.npz", **sim)
+# %%
+fs_arcsec_per_yr = 259.200451397127
+sim = np.load("/tmp/save.npz")
 # %%
 planets = ("Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
 planet_ecc_fmft = dict()
@@ -299,6 +303,8 @@ for i, pl in enumerate(planets):
     pts = Phi[i]
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
+
+plt.tight_layout()
 # %%
 obj_and_grad = jax.jit(jax.value_and_grad(lambda R: objective(R, sim['y'], masses)))
 
@@ -329,6 +335,8 @@ for i, pl in enumerate(planets):
     pts = Theta[i]
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
+
+plt.tight_layout()
 # %%
 # # %config InlineBackend.figure_format = 'retina'
 # # plt.rcParams['font.size'] = 12
@@ -890,6 +898,82 @@ axs[0][0].set_ylabel("Eccentricity")
 axs[1][0].set_ylabel("Inclination")
 axs[0][0].legend()
 plt.show()
+# %%
+pidx = 3000
+test_fmft = get_planet_fmft(psi_planet_list, sim['time'][:pidx], Psi_filt[:, :pidx], N=14, display=True)
+# %%
+# mercury_y = Psi_filt[N][:pidx]
+# venus_y = Psi_filt[1+N][:pidx]
+# p1_abs = mercury_y * np.conj(mercury_y)
+# p2_abs = venus_y * np.conj(venus_y)
+
+# mercury_y_approx = np.sum([amp * np.exp(1j*freq*sim['time'][:pidx]) for freq,amp in list(test_fmft['Mercury_Y'].items())[:3]], axis=0)
+# venus_y_approx = np.sum([amp * np.exp(1j*freq*sim['time'][:pidx]) for freq,amp in list(test_fmft['Venus_Y'].items())[:3]], axis=0)
+# p1_approx_abs = mercury_y_approx * np.conj(mercury_y_approx)
+# p2_approx_abs = venus_y_approx * np.conj(venus_y_approx)
+
+# mercury_x = Psi_filt[0][:pidx]
+# venus_x = Psi_filt[1][:pidx]
+# p1_abs = mercury_x * np.conj(mercury_x)
+# p2_abs = venus_x * np.conj(venus_x)
+
+# mercury_x_approx = np.sum([amp * np.exp(1j*freq*sim['time'][:pidx]) for freq,amp in list(test_fmft['Mercury_X'].items())[:3]], axis=0)
+# venus_x_approx = np.sum([amp * np.exp(1j*freq*sim['time'][:pidx]) for freq,amp in list(test_fmft['Venus_X'].items())[:3]], axis=0)
+# p1_approx_abs = mercury_x_approx * np.conj(mercury_x_approx)
+# p2_approx_abs = venus_x_approx * np.conj(venus_x_approx)
+
+# earth_x = Psi_filt[2][:pidx]
+# mars_x = Psi_filt[3][:pidx]
+# p1_abs = earth_x * np.conj(earth_x)
+# p2_abs = mars_x * np.conj(mars_x)
+
+# earth_x_approx = np.sum([amp * np.exp(1j*freq*sim['time'][:pidx]) for freq,amp in list(test_fmft['Earth_X'].items())[:3]], axis=0)
+# mars_x_approx = np.sum([amp * np.exp(1j*freq*sim['time'][:pidx]) for freq,amp in list(test_fmft['Mars_X'].items())[:3]], axis=0)
+# p1_approx_abs = earth_x_approx * np.conj(earth_x_approx)
+# p2_approx_abs = mars_x_approx * np.conj(mars_x_approx)
+
+earth_y = Psi_filt[2+N][:pidx]
+mars_y = Psi_filt[3+N][:pidx]
+p1_abs = earth_y * np.conj(earth_y)
+p2_abs = mars_y * np.conj(mars_y)
+
+earth_y_approx = np.sum([amp * np.exp(1j*freq*sim['time'][:pidx]) for freq,amp in np.array(list(test_fmft['Earth_Y'].items()))[[0,1,4]]], axis=0)
+mars_y_approx = np.sum([amp * np.exp(1j*freq*sim['time'][:pidx]) for freq,amp in np.array(list(test_fmft['Mars_Y'].items()))[[0,1,2]]], axis=0)
+p1_approx_abs = earth_y_approx * np.conj(earth_y_approx)
+p2_approx_abs = mars_y_approx * np.conj(mars_y_approx)
+
+fig, axs = plt.subplots(3, 1, figsize=(8,8))
+axs[0].plot(sim['time'][:pidx], p1_abs)
+axs[0].plot(sim['time'][:pidx], p1_approx_abs)
+axs[0].set_title("Earth Y")
+axs[0].set_ylim(bottom=0)
+
+axs[1].plot(sim['time'][:pidx], p2_abs)
+axs[1].plot(sim['time'][:pidx], p2_approx_abs)
+axs[1].set_title("Mars Y")
+axs[1].set_ylim(bottom=0)
+
+axs[2].plot(sim['time'][:pidx], p1_abs, c='grey', alpha=0.4)
+axs[2].plot(sim['time'][:pidx], p1_approx_abs, c='grey', alpha=0.4)
+axs[2].plot(sim['time'][:pidx], p2_abs, c='grey', alpha=0.4)
+axs[2].plot(sim['time'][:pidx], p2_approx_abs, c='grey', alpha=0.4)
+
+axs[2].plot(sim['time'][:pidx], p1_abs + p2_abs - 1.3e-9)
+axs[2].plot(sim['time'][:pidx], p1_approx_abs + p2_approx_abs - 1.3e-9)
+axs[2].set_ylim(bottom=0)
+axs[2].set_title("Sum")
+
+plt.tight_layout()
+# %%
+plt.plot(sim['time'][:pidx], p1_abs, label="mars")
+plt.plot(sim['time'][:pidx], p2_abs, label="earth")
+plt.plot(sim['time'][:pidx], p1_abs + p2_abs, label="sum")
+plt.legend()
+plt.xlim(0, 5e7)
+# %%
+# t = np.linspace(0, 10, 1000)
+# df1 = 2
+# a = np.
 # %%
 # script X matching action variable in Mogavero & Laskar (2023)
 # sX = np.real(sim['x'] * np.conj(sim['x']))
