@@ -103,7 +103,7 @@ def load_sim(path, filter_freq=None):
 full_sim = load_sim(dataset_path / "solarsystem_m762.bin")
 print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
 
-keep_first = np.sum(full_sim['time'] < 100e6 / TO_YEAR)
+keep_first = np.sum(full_sim['time'] < 10e6 / TO_YEAR)
 sim = {}
 for key, val in full_sim.items():
     sim[key] = val[..., :keep_first]
@@ -304,7 +304,11 @@ for i, pl in enumerate(planets):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 
+axs[0][0].set_ylabel("Original")
+axs[1][0].set_ylabel("Decoupled")
 plt.tight_layout()
+
+plt.savefig("figs/ecc_linear_transform.eps")
 # %%
 obj_and_grad = jax.jit(jax.value_and_grad(lambda R: objective(R, sim['y'], masses)))
 
@@ -336,7 +340,11 @@ for i, pl in enumerate(planets):
     axs[1][i].plot(np.real(pts), np.imag(pts))
     axs[1][i].set_aspect('equal')
 
+axs[0][0].set_ylabel("Original")
+axs[1][0].set_ylabel("Decoupled")
 plt.tight_layout()
+
+plt.savefig("figs/inc_linear_transform.eps")
 # %%
 # # %config InlineBackend.figure_format = 'retina'
 # # plt.rcParams['font.size'] = 12
