@@ -91,10 +91,34 @@ def load_sim(path, results=None, filter_freq=None):
 
     return results, masses, rb_sim
 
-def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None):
+def custom_fmft(time, X, Nrecon, prominence=0.0005):
+    N = time.shape[-1]
+    result = {}
+
+    fourier = np.fft.fft(X * np.hanning(N))
+    fourier = np.fft.fftshift(fourier)
+    freq = np.fft.fftfreq(N, d=time[1]-time[0])
+    freq = np.fft.fftshift(freq)
+    fourier_amp = np.abs(fourier)
+
+    peaks, _ = scipy.signal.find_peaks(fourier_amp, prominence=fourier_amp/100)
+    peaks = peaks[np.argsort(fourier_amp[peaks])][::-1]
+    peaks = peaks[:Nrecon]
+
+    for peak in peaks:
+        result[freq[peak]*2*np.pi] = fourier[peak] / N / np.mean(np.hanning(N))
+    
+    return result
+
+def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None, fmft_alg="default"):
+    if fmft_alg == "default":
+        fmft_alg = fmft
+    else:
+        fmft_alg = custom_fmft
+    
     planet_fmft = {}
     for i,pl in enumerate(pl_list):
-        fmft_res = fmft(time, X[i], N)
+        fmft_res = fmft_alg(time, X[i], N)
         planet_fmft[pl] = fmft_res
         planet_freqs = np.array(list(planet_fmft[pl].keys()))
         
@@ -180,13 +204,17 @@ def decouple_modes(x, y, rb_sim, masses, optimize=True, debug=False):
         loss = rotation_loss*1e-1 + J_loss*1e-2 #+ off_diag_loss * 1e-3 #+ on_diag_loss * 1e-1
         return loss
 
-    obj_and_grad_ecc = jax.jit(jax.value_and_grad(lambda R: objective(R, x, masses)))
-    sol_ecc = scipy.optimize.minimize(obj_and_grad_ecc, ecc_rotation_matrix_T.reshape(-1), options={'gtol': 1e-8, 'disp': True}, jac=True)
-    ecc_rotation_matrix_opt_T = sol_ecc.x.reshape(N,N)
+    if optimize:
+        obj_and_grad_ecc = jax.jit(jax.value_and_grad(lambda R: objective(R, x, masses)))
+        sol_ecc = scipy.optimize.minimize(obj_and_grad_ecc, ecc_rotation_matrix_T.reshape(-1), options={'gtol': 1e-8, 'disp': True}, jac=True)
+        ecc_rotation_matrix_opt_T = sol_ecc.x.reshape(N,N)
 
-    obj_and_grad_inc = jax.jit(jax.value_and_grad(lambda R: objective(R, y, masses)))
-    sol_inc = scipy.optimize.minimize(obj_and_grad_inc, inc_rotation_matrix_T.reshape(-1), options={'gtol': 1e-8, 'disp': True}, jac=True)
-    inc_rotation_matrix_opt_T = sol_inc.x.reshape(N,N)
+        obj_and_grad_inc = jax.jit(jax.value_and_grad(lambda R: objective(R, y, masses)))
+        sol_inc = scipy.optimize.minimize(obj_and_grad_inc, inc_rotation_matrix_T.reshape(-1), options={'gtol': 1e-8, 'disp': True}, jac=True)
+        inc_rotation_matrix_opt_T = sol_inc.x.reshape(N,N)
+    else:
+        ecc_rotation_matrix_opt_T = ecc_rotation_matrix_T
+        inc_rotation_matrix_opt_T = inc_rotation_matrix_T
 
     if debug:
         print("ECC:")
@@ -252,6 +280,22 @@ def get_k_vecs(order, pl_idx, skip_idx, N, include_negative=False):
                 for c in range(b, N*2):
                     for d in range(N*2):
                         for e in range(d,N*2):
+                            if a==b or a==c or a==d or a==e:
+                                continue
+                            if a in skip_idx or b in skip_idx or c in skip_idx or d in skip_idx or e in skip_idx:
+                                continue
+                            k = np.zeros(N*2, dtype=int)
+                            k[a] +=1
+                            k[b] -=1
+                            k[c] -=1
+                            k[d] -=1
+                            k[e] -=1
+                            possible_k.append(k)
+        for a in range(N*2):
+            for b in range(a,N*2):
+                for c in range(b, N*2):
+                    for d in range(N*2):
+                        for e in range(d,N*2):
                             if d==a or d==b or d==c:
                                 continue
                             if e==a or e==b or e==c:
@@ -265,6 +309,7 @@ def get_k_vecs(order, pl_idx, skip_idx, N, include_negative=False):
                             k[d] -=1
                             k[e] -=1
                             possible_k.append(k)
+
     # SEVENTH ORDER
     if order == 7:
         for a in range(N*2):
@@ -295,7 +340,7 @@ def get_k_vecs(order, pl_idx, skip_idx, N, include_negative=False):
         possible_k = np.concat((possible_k, -possible_k), axis=0)
     return possible_k
 
-def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False, omega_pct_thresh=1e-4, omega_abs_thresh=1e-3, skip_idx=[]):
+def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False, omega_pct_thresh=1e-4, omega_abs_thresh=1e-3, skip_idx=[], min_freq=0.0):
     combs = []
     for i,pl in enumerate(pl_list):
         if display:
@@ -308,6 +353,9 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
             omega = k @ omega_vec
 
             if order != 1 and (np.abs(omega_vec/omega-1) < 1e-3).any():
+                continue
+
+            if np.abs(omega) < min_freq:
                 continue
 
             omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
@@ -332,7 +380,11 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
                 # add new kvec if it is better or there wasn't an existing one with the same frequency
                 if not omega_N_exists:
                     comb[tuple(k)] = (amp, omega_N, omega_pct_error)
-                    if display: print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_pct_error,np.abs(amp)))
+            
+        if display:
+            for k,(amp, omega, err) in comb.items():
+                k = np.array(k)
+                print(k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,err,np.abs(amp)))
         combs.append(comb)
     return combs
 
@@ -347,10 +399,10 @@ def apply_sequential_transforms(x, transforms):
         x = transform(x)
     return x
 
-def cancel_frequencies(psi, time, omega_vec, omega_amp, iterations, debug=False):
+def cancel_frequencies(psi, time, omega_vec, omega_amp, iterations, omega_pct_thresh=2e-5, omega_abs_thresh=1e-3, n_fmft=14, fmft_alg="default", min_freq=0.0, debug=False):
     # Calculate all planet FMFTs
     print("FMFT Results")
-    planet_fmft = get_planet_fmft(psi_planet_list, time, psi, N=14, display=debug)
+    planet_fmft = get_planet_fmft(psi_planet_list, time, psi, N=n_fmft, fmft_alg=fmft_alg, display=debug)
 
     skip_planet_idx = []
     skip_planet_idx.append(int(np.argmin(np.abs(omega_vec))))
@@ -360,7 +412,7 @@ def cancel_frequencies(psi, time, omega_vec, omega_amp, iterations, debug=False)
     for i, pl in enumerate(psi_planet_list):
         amps = [v for k, v in planet_fmft[pl].items()]
         amp_ratio = np.abs(amps[0]) / np.abs(amps[1])
-        if amp_ratio < 5:
+        if amp_ratio < 4:
             print(pl, amp_ratio)
             skip_planet_idx.append(i)
     if debug: skip_planet_idx.sort()
@@ -378,8 +430,8 @@ def cancel_frequencies(psi, time, omega_vec, omega_amp, iterations, debug=False)
     for i,order in enumerate(iterations):
         if debug: print("#"*10, f"ITERATION {i+1} - ORDER {order}", "#"*10)
         last_x_val = apply_sequential_transforms(x_val, trans_fns)
-        last_fmft = get_planet_fmft(psi_planet_list, time, last_x_val, 14, display=False)
-        combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=debug, include_negative=False, omega_pct_thresh=2e-5)
+        last_fmft = get_planet_fmft(psi_planet_list, time, last_x_val, n_fmft, fmft_alg=fmft_alg, display=False)
+        combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=debug, include_negative=False, omega_pct_thresh=omega_pct_thresh, omega_abs_thresh=omega_abs_thresh, skip_idx=skip_planet_idx, min_freq=min_freq)
 
         x_bar_i = [sympy.Symbol(f"\\bar X^{{({i+1})}}_"+str(j)) for j in range(N*2)]
 
@@ -403,7 +455,7 @@ def cancel_frequencies(psi, time, omega_vec, omega_amp, iterations, debug=False)
 
     psi_trans = apply_sequential_transforms(x_val, trans_fns)
 
-    return psi_trans, trans_fns
+    return psi_trans, trans_fns, combs
 
 ##########################################
 ### Linear Combinations
