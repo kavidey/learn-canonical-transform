@@ -100,18 +100,18 @@ def load_sim(path, filter_freq=None):
 
     return results
 # %%
-full_sim = load_sim(dataset_path / "solarsystem_m762.bin")
-print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
+# full_sim = load_sim(dataset_path / "solarsystem_m762.bin")
+# print(full_sim['time'].shape, full_sim['time'][-1] * TO_YEAR)
 
-keep_first = np.sum(full_sim['time'] < 10e6 / TO_YEAR)
-sim = {}
-for key, val in full_sim.items():
-    sim[key] = val[..., :keep_first]
+# keep_first = np.sum(full_sim['time'] < 10e6 / TO_YEAR)
+# sim = {}
+# for key, val in full_sim.items():
+#     sim[key] = val[..., :keep_first]
 
-fs_arcsec_per_yr = (TO_ARCSEC_PER_YEAR / np.gradient(sim['time']).mean()) * 2 * np.pi
-print("sample rate (\"/yr):", fs_arcsec_per_yr)
-print("dt (yr):", np.gradient(sim['time']).mean() / (2 * np.pi))
-np.savez_compressed("/tmp/save.npz", **sim)
+# fs_arcsec_per_yr = (TO_ARCSEC_PER_YEAR / np.gradient(sim['time']).mean()) * 2 * np.pi
+# print("sample rate (\"/yr):", fs_arcsec_per_yr)
+# print("dt (yr):", np.gradient(sim['time']).mean() / (2 * np.pi))
+# np.savez_compressed("/tmp/save.npz", **sim)
 # %%
 fs_arcsec_per_yr = 259.200451397127
 sim = np.load("/tmp/save.npz")
@@ -676,7 +676,7 @@ def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None):
                     print(f"\t\t{ctf * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(compareto[pl][ctf]):0.8f}  ∢{np.angle(compareto[pl][ctf]):.2f}", end='')
                 print()
     return planet_fmft
-planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi, N=14, display=True)
+planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi, N=20, display=True)
 # %%
 def get_k_vecs(order, pl_idx, skip_idx, N, include_negative=False):
     assert order % 2 == 1, "Order must be odd"
@@ -715,6 +715,22 @@ def get_k_vecs(order, pl_idx, skip_idx, N, include_negative=False):
                 for c in range(b, N*2):
                     for d in range(N*2):
                         for e in range(d,N*2):
+                            if a==b or a==c or a==d or a==e:
+                                continue
+                            if a in skip_idx or b in skip_idx or c in skip_idx or d in skip_idx or e in skip_idx:
+                                continue
+                            k = np.zeros(N*2, dtype=int)
+                            k[a] +=1
+                            k[b] -=1
+                            k[c] -=1
+                            k[d] -=1
+                            k[e] -=1
+                            possible_k.append(k)
+        for a in range(N*2):
+            for b in range(a,N*2):
+                for c in range(b, N*2):
+                    for d in range(N*2):
+                        for e in range(d,N*2):
                             if d==a or d==b or d==c:
                                 continue
                             if e==a or e==b or e==c:
@@ -728,6 +744,7 @@ def get_k_vecs(order, pl_idx, skip_idx, N, include_negative=False):
                             k[d] -=1
                             k[e] -=1
                             possible_k.append(k)
+
     # SEVENTH ORDER
     if order == 7:
         for a in range(N*2):
@@ -795,7 +812,11 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
                 # add new kvec if it is better or there wasn't an existing one with the same frequency
                 if not omega_N_exists:
                     comb[tuple(k)] = (amp, omega_N, omega_pct_error)
-                    if display: print (k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,omega_pct_error,np.abs(amp)))
+            
+        if display:
+            for k,(amp, omega, err) in comb.items():
+                k = np.array(k)
+                print(k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,err,np.abs(amp)))
         combs.append(comb)
     return combs
 
@@ -821,10 +842,10 @@ trans_fns = []
 
 # iterations = [1]
 # iterations = [3]
-# iterations = [5]
+iterations = [5]
 # iterations = [7]
 # iterations = [1,3]
-iterations = [1,3,5]
+# iterations = [1,3,5]
 # iterations = [1,3,5,7]
 
 skip_planet_idx = []
@@ -834,7 +855,7 @@ print("planets that don't satisfy epsilon assumption")
 for i, pl in enumerate(psi_planet_list):
     amps = [v for k, v in planet_fmft[pl].items()]
     amp_ratio = np.abs(amps[0]) / np.abs(amps[1])
-    if amp_ratio < 5:
+    if amp_ratio < 4:
         print(pl, amp_ratio)
         skip_planet_idx.append(i)
 skip_planet_idx.sort()
@@ -843,7 +864,7 @@ for i,order in enumerate(iterations):
     print("#"*10, f"ITERATION {i+1} - ORDER {order}", "#"*10)
     last_x_val = apply_sequential_transforms(x_val, trans_fns)
     last_fmft = get_planet_fmft(psi_planet_list, sim['time'], last_x_val, 14, display=False)
-    combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True, include_negative=False, omega_pct_thresh=2e-5)
+    combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=True, include_negative=True, omega_pct_thresh=2e-5, skip_idx=skip_planet_idx)
 
     x_bar_i = [sympy.Symbol(f"\\bar X^{{({i+1})}}_"+str(j)) for j in range(N*2)]
 
@@ -869,12 +890,11 @@ Psi_trans = apply_sequential_transforms(x_val, trans_fns)
 # %%
 b, a = scipy.signal.butter(10, 100, 'low', fs=fs_arcsec_per_yr) # type: ignore[reportUnknownVariableType]
 # Psi_filt = scipy.signal.lfilter(b, a, Psi_trans)
-# Psi_filt = Psi_trans
-Psi_filt = Psi
+Psi_filt = Psi_trans
+# Psi_filt = Psi
 # plt.plot(np.real(Psi_filt[3]), np.imag(Psi_filt[3]))
 # %%
-# new_planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi_trans, N=14, display=True, compareto=last_fmft)
-new_planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi_filt, N=14, display=True, compareto=planet_fmft)
+new_planet_fmft = get_planet_fmft(psi_planet_list, sim['time'], Psi_filt, N=20, display=True, compareto=planet_fmft)
 # %%
 fig, axs = plt.subplots(2,2*N,figsize=(30, 5))
 for i, pl in enumerate(psi_planet_list):
@@ -894,11 +914,17 @@ for i, pl in enumerate(planets):
     # axs[0][i].plot(sim['time'][100:], sim['x'][i][100:] * np.conj(sim['x'][i])[100:], label='Original Coordinate')
     # axs[1][i].plot(sim['time'][100:], sim['y'][i][100:] * np.conj(sim['y'][i])[100:])
 
+    fmft_recon_x = np.sum([amp * np.exp(1j*freq*sim['time']) for freq,amp in planet_fmft[psi_planet_list[i]].items()],axis=0)
+    fmft_recon_y = np.sum([amp * np.exp(1j*freq*sim['time']) for freq,amp in planet_fmft[psi_planet_list[i+N]].items()],axis=0)
+    axs[0][i].plot(sim['time'][100:], fmft_recon_x[100:] * np.conj(fmft_recon_x)[100:], label='FMFT Recon', alpha=0.5, c='grey')
+    axs[1][i].plot(sim['time'][100:], fmft_recon_y[100:] * np.conj(fmft_recon_y)[100:], alpha=0.5, c='grey')
+
     axs[0][i].plot(sim['time'][100:], Psi[i][100:] * np.conj(Psi[i])[100:], label='After Rotation')
     axs[1][i].plot(sim['time'][100:], Psi[i+N][100:] * np.conj(Psi[i+N])[100:])
 
     axs[0][i].plot(sim['time'][100:], Psi_filt[i][100:] * np.conj(Psi_filt[i])[100:], label='After lasers', alpha=0.8)
     axs[1][i].plot(sim['time'][100:], Psi_filt[i+N][100:] * np.conj(Psi_filt[i+N])[100:], alpha=0.8)
+
 
     axs[0][i].set_ylim(-axs[0][i].get_ylim()[1] / 10, axs[0][i].get_ylim()[1] * 1.5)
     axs[1][i].set_ylim(-axs[1][i].get_ylim()[1] / 10, axs[1][i].get_ylim()[1] * 1.5)
@@ -906,6 +932,23 @@ axs[0][0].set_ylabel("Eccentricity")
 axs[1][0].set_ylabel("Inclination")
 axs[0][0].legend()
 plt.show()
+# %%
+k,(amp, omega, _) = list(combs[0].items())[0]
+omega_vec = np.array(k)
+print(omega_vec)
+cancel = amp * Psi[1]/omega_amp[1] * np.conj(Psi[5]/omega_amp[5]) * np.conj(Psi[13]/omega_amp[13]) * np.conj(Psi[15]/omega_amp[15]) * np.conj(Psi[15]/omega_amp[15])
+
+reconstruct = np.sum([amp * np.exp(1j*freq*sim['time']) for freq,amp in planet_fmft['Mercury_X'].items()],axis=0)
+
+# plt.plot(Psi[0]*np.conj(Psi[0]))
+plt.plot(reconstruct*np.conj(reconstruct))
+# plt.plot((Psi[0] + cancel) * np.conj(Psi[0] + cancel))
+plt.plot((reconstruct - cancel) * np.conj(reconstruct - cancel))
+
+# plt.plot(Psi[0])
+# plt.plot(reconstruct)
+# plt.plot(construct)
+# plt.plot(Psi[0] + construct)
 # %%
 pidx = 3000
 test_fmft = get_planet_fmft(psi_planet_list, sim['time'][:pidx], Psi_filt[:, :pidx], N=14, display=True)

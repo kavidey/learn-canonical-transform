@@ -25,6 +25,42 @@ N = 8
 planets = ("Mercury", "Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune")
 psi_planet_list = (tuple(map(lambda pl: pl+"_X", planets)) + tuple(map(lambda pl: pl+"_Y", planets)))
 true_omega_vec = np.array([5.535, 7.437, 17.357, 17.905, 4.257, 28.77, 3.088, 0.671] + [-5.624, -7.082, -18.837, -17.749, 0.0, -26.348, -2.993, -0.692])
+
+# Resonances from Timescales of Chaos in the Inner Solar System: Lyapunov Spectrum and Quasi-integrals of Motion
+# Order: [g1,g2,g3,g4,g5,g6,g7,g8, s1,s2,s3,s4,s5,s6,s7,s8]
+harmonics = np.array([
+    [0,0, 1,-1,0,0,0,0,  0,0,-1, 1,0,0,0,0],   # 1: g3 - g4 - s3 + s4
+    [1,-1,0,0,0,0,0,0,  1,-1,0,0,0,0,0,0],     # 2: g1 - g2 + s1 - s2
+    [0,1,0,0,-1,0,0,0, -2, 2,0,0,0,0,0,0],     # 3: g2 - g5 -2s1 +2s2
+    [0,0, 2,-2,0,0,0,0,  0,0,-1, 1,0,0,0,0],   # 4: 2g3 -2g4 - s3 + s4
+    [1,0,0,0,-1,0,0,0, -1, 1,0,0,0,0,0,0],     # 5
+    [0,1,0,-1,0,0,0,0,  0,1,0,-1,0,0,0,0],     # 6
+    [1,-2,0,1,0,0,0,0,  1,-2,0,1,0,0,0,0],     # 7
+    [1,0,-1,0,0,0,0,0,  0,1,-1,0,0,0,0,0],     # 8
+    [1,0,1,-2,0,0,0,0,  0,1,-1,0,0,0,0,0],     # 9
+    [0,0, 3,-3,0,0,0,0,  0,0,-1, 1,0,0,0,0],   # 10
+    [0,1,-1,0,0,0,0,0, -1, 2,-1,0,0,0,0,0],    # 11
+    [1,0,-2,1,0,0,0,0,  0,1,0,-1,0,0,0,0],     # 12
+    [2,0,-1,0,-1,0,0,0, 0,1,0,-1,0,0,0,0],     # 13
+    [0,0,0,1,-1,0,0,0,  0,-1,2,-1,0,0,0,0],    # 14
+    [1,0,-2,1,0,0,0,0,  1,0,1,-2,0,0,0,0],     # 15
+    [1,0,0,-1,0,0,0,0,  1,0,0,-1,0,0,0,0],     # 16
+    [1,-2,0,0,1,0,0,0,  3,-3,0,0,0,0,0,0],     # 17
+    [1,0,0,-1,0,0,0,0,  0,1,-1,0,0,0,0,0],     # 18
+    [3,-1,0,-1,-1,0,0,0, 1,0,-1,0,0,0,0,0],    # 19
+    [2,-1,-1,0,0,0,0,0, 1,0,-1,0,0,0,0,0],     # 20
+    [2,-1,0,-1,0,0,0,0, 1,0,-1,0,0,0,0,0],     # 21
+    [0,0, 3,-3,0,0,0,0,  0,0, 2,-2,0,0,0,0],   # 22
+    [2,-1,-1,1,0,0,0,0, 1,0,0,-1,0,0,0,0],     # 23
+    [0,0, 2,-1,-1,0,0,0, -1,0,0,1,0,0,0,0],    # 24
+    [1,0,-3,2,0,0,0,0,  0,1,0,-1,0,0,0,0],     # 25
+    [1,-1,-1,1,0,0,0,0, 1,-1,0,0,0,0,0,0],     # 26
+    [1,0,1,-2,0,0,0,0,  1,0,0,-1,0,0,0,0],     # 27
+    [1,1,0,0,-2,0,0,0, -3, 3,0,0,0,0,0,0],     # 28
+    [3,-1,0,-1,-1,0,0,0, 0,1,-1,0,0,0,0,0],    # 29
+    [2,0,0,-1,-1,0,0,0, 0,1,0,-1,0,0,0,0],     # 30
+])
+
 ##########################################
 ### General Utils
 ##########################################
@@ -66,13 +102,13 @@ def load_sim(path, results=None, filter_freq=None):
     G = 1
     beta = ((1 * m) / (1 + m))
     mu = G * (1 + m)
-    results['Lambda'] = beta * np.sqrt(mu * results['a'])
+    results['Lambda'] = beta * np.sqrt(mu * np.abs(results['a']))
     
     M = results['l'] - results['pomega']
     results['lambda'] = M + results['pomega']
 
-    results['x'] = np.sqrt(results['Lambda']) * np.sqrt(1 - np.sqrt(1-results['e']**2)) * np.exp(1j * results['pomega'])
-    results['y'] = np.sqrt(2 * results['Lambda']) * np.power(1-results['e']**2, 1/4) * np.sin(results['inc']/2) * np.exp(1j * results['Omega'])
+    results['x'] = np.sqrt(results['Lambda']) * np.sqrt(1 - np.sqrt(1-np.clip(results['e'], 0, 1)**2)) * np.exp(1j * results['pomega'])
+    results['y'] = np.sqrt(2 * results['Lambda']) * np.power(1-np.clip(results['e'], 0, 1)**2, 1/4) * np.sin(results['inc']/2) * np.exp(1j * results['Omega'])
 
     # coordinate pairs are:
     # - Lambda, Lambda
@@ -110,7 +146,7 @@ def custom_fmft(time, X, Nrecon, prominence=0.0005):
     
     return result
 
-def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None, fmft_alg="default"):
+def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None, fmft_alg="default", scalar=TO_ARCSEC_PER_YEAR):
     if fmft_alg == "default":
         fmft_alg = fmft
     else:
@@ -127,10 +163,10 @@ def get_planet_fmft(pl_list, time, X, N=14, display=False, compareto=None, fmft_
             print(pl)
             print("-------")
             for i,f in enumerate(planet_freqs):
-                print(f"{f * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(planet_fmft[pl][f]):0.8f}  ∢{np.angle(planet_fmft[pl][f]):.2f}", end='')
+                print(f"{f * scalar:+07.3f} \t {np.abs(planet_fmft[pl][f]):0.8f}  ∢{np.angle(planet_fmft[pl][f]):.2f}", end='')
                 if compareto:
                     ctf = list(compareto[pl].keys())[i]
-                    print(f"\t\t{ctf * TO_ARCSEC_PER_YEAR:+07.3f} \t {np.abs(compareto[pl][ctf]):0.8f}  ∢{np.angle(compareto[pl][ctf]):.2f}", end='')
+                    print(f"\t\t{ctf * scalar:+07.3f} \t {np.abs(compareto[pl][ctf]):0.8f}  ∢{np.angle(compareto[pl][ctf]):.2f}", end='')
                 print()
     return planet_fmft
 
@@ -340,7 +376,7 @@ def get_k_vecs(order, pl_idx, skip_idx, N, include_negative=False):
         possible_k = np.concat((possible_k, -possible_k), axis=0)
     return possible_k
 
-def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False, omega_pct_thresh=1e-4, omega_abs_thresh=1e-3, skip_idx=[], min_freq=0.0):
+def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negative=False, omega_pct_thresh=1e-4, omega_abs_thresh=1e-3, skip_idx=[], min_freq=0.0, N=N, fmft_scalar=TO_ARCSEC_PER_YEAR):
     combs = []
     for i,pl in enumerate(pl_list):
         if display:
@@ -361,6 +397,8 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
             omega_N,amp = closest_key_entry(pl_fmft[pl],omega)
             omega_pct_error = np.abs(omega_N/omega-1)
             omega_abs_error = np.abs(omega_N - omega)
+
+            # print("testing", k, omega, omega_N, omega_abs_error)
 
             # if the frequency is close to a frequency that exists in the planet
             if omega_pct_error<omega_pct_thresh and omega_abs_error < omega_abs_thresh:
@@ -384,11 +422,11 @@ def get_combs(order, pl_fmft, pl_list, omega_vec, display=False, include_negativ
         if display:
             for k,(amp, omega, err) in comb.items():
                 k = np.array(k)
-                print(k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*TO_ARCSEC_PER_YEAR,err,np.abs(amp)))
+                print(k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format(omega*fmft_scalar,err,np.abs(amp)))
         combs.append(comb)
     return combs
 
-def eval_transform(x_bars, subs):
+def eval_transform(x_bars, subs, N=N):
     x_i_lambda = [sympy.lambdify(x_bars[-2], x_bars[-1][i].subs(subs)) for i in range(N*2)]
 
     trans = lambda x: np.array([x_lambda(*x) for x_lambda in x_i_lambda])
@@ -399,20 +437,26 @@ def apply_sequential_transforms(x, transforms):
         x = transform(x)
     return x
 
-def cancel_frequencies(psi, time, omega_vec, omega_amp, iterations, omega_pct_thresh=2e-5, omega_abs_thresh=1e-3, n_fmft=14, fmft_alg="default", min_freq=0.0, debug=False):
+def cancel_frequencies(psi, time, omega_vec, omega_amp, iterations, omega_pct_thresh=2e-5, omega_abs_thresh=1e-3, n_fmft=14, fmft_alg="default", min_freq=0.0, debug=False, psi_planet_list=psi_planet_list, fmft_scalar=TO_ARCSEC_PER_YEAR, epsilon_thresh=4, initial_fmft=None):
+    N = len(psi_planet_list)//2
     # Calculate all planet FMFTs
-    print("FMFT Results")
-    planet_fmft = get_planet_fmft(psi_planet_list, time, psi, N=n_fmft, fmft_alg=fmft_alg, display=debug)
+    if debug: print("FMFT Results")
+    if initial_fmft:
+        planet_fmft = initial_fmft
+    else:
+        print(n_fmft, fmft_alg, debug, fmft_scalar)
+        planet_fmft = get_planet_fmft(psi_planet_list, time, psi, N=n_fmft, fmft_alg=fmft_alg, display=debug, scalar=fmft_scalar)
 
     skip_planet_idx = []
-    skip_planet_idx.append(int(np.argmin(np.abs(omega_vec))))
+    if np.min(np.abs(omega_vec)) < 0.001:
+        skip_planet_idx.append(int(np.argmin(np.abs(omega_vec))))
 
     # Figure out which planets we can use to build combinations
     if debug: print("planets that don't satisfy epsilon assumption")
     for i, pl in enumerate(psi_planet_list):
         amps = [v for k, v in planet_fmft[pl].items()]
         amp_ratio = np.abs(amps[0]) / np.abs(amps[1])
-        if amp_ratio < 4:
+        if amp_ratio < epsilon_thresh:
             print(pl, amp_ratio)
             skip_planet_idx.append(i)
     if debug: skip_planet_idx.sort()
@@ -430,8 +474,11 @@ def cancel_frequencies(psi, time, omega_vec, omega_amp, iterations, omega_pct_th
     for i,order in enumerate(iterations):
         if debug: print("#"*10, f"ITERATION {i+1} - ORDER {order}", "#"*10)
         last_x_val = apply_sequential_transforms(x_val, trans_fns)
-        last_fmft = get_planet_fmft(psi_planet_list, time, last_x_val, n_fmft, fmft_alg=fmft_alg, display=False)
-        combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=debug, include_negative=False, omega_pct_thresh=omega_pct_thresh, omega_abs_thresh=omega_abs_thresh, skip_idx=skip_planet_idx, min_freq=min_freq)
+        if i == 0:
+            last_fmft = planet_fmft
+        else:
+            last_fmft = get_planet_fmft(psi_planet_list, time, last_x_val, n_fmft, fmft_alg=fmft_alg, display=debug, scalar=fmft_scalar)
+        combs = get_combs(order, last_fmft, psi_planet_list, omega_vec, display=debug, include_negative=False, omega_pct_thresh=omega_pct_thresh, omega_abs_thresh=omega_abs_thresh, skip_idx=skip_planet_idx, min_freq=min_freq, N=N, fmft_scalar=fmft_scalar)
 
         x_bar_i = [sympy.Symbol(f"\\bar X^{{({i+1})}}_"+str(j)) for j in range(N*2)]
 
@@ -451,7 +498,7 @@ def cancel_frequencies(psi, time, omega_vec, omega_amp, iterations, omega_pct_th
                 x_bar_i_j -= term
             subs[x_bar_i[j]] = x_bar_i_j
         x_bars.append(x_bar_i)
-        trans_fns.append(eval_transform(x_bars, subs))
+        trans_fns.append(eval_transform(x_bars, subs, N))
 
     psi_trans = apply_sequential_transforms(x_val, trans_fns)
 
@@ -480,7 +527,7 @@ def plot_action(x, t, ax=None, take_mag=True, **kwargs):
     if take_mag: x = np.real(x * np.conj(x))
     
     action = x / x[0]
-    action = action - action.mean()
+    action = action - action[:action.shape[0]//2].mean()
 
     if ax:
         ax.plot(t, action, **kwargs)
