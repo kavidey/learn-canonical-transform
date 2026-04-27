@@ -71,7 +71,6 @@ axs[0,1].set_ylim(-6,6)
 axs[1,1].plot(t, p_sol[:,1])
 axs[1,1].set_ylim(0,6)
 # %%
-# %%
 fig, axs = plt.subplots(1,2, figsize=(8,3))
 axs[0].plot(jnp.real(complex_sol[:,0]), jnp.imag(complex_sol[:,0]), linewidth=0.5)
 axs[0].plot(jnp.real(complex_sol[:,1]), jnp.imag(complex_sol[:,1]), linewidth=0.5)
@@ -119,8 +118,9 @@ axs[1].set_ylim(-0.2,6)
 axs[1].set_xlim(0,50)
 axs[1].set_ylabel("$J_n$")
 axs[1].set_xlabel("$t$")
-axs[1].legend()
+axs[1].legend(loc="upper right")
 
+plt.tight_layout()
 plt.savefig("figs/simple_example_analytical_sol.eps")
 # %%
 plt.plot(t, p_sol[:,0], label="$I_1$")
@@ -133,6 +133,12 @@ plt.legend()
 action_fmft_calc = action_angle_tools.get_planet_fmft(["p_"+str(i) for i in range(2)], t, complex_sol.T, N=5, fmft_alg="default", display=True, scalar=1)
 omega_vec_calc = np.array([list(action_fmft_calc["p_0"].items())[0][0], list(action_fmft_calc["p_1"].items())[0][0]])
 omega_amp_calc = np.array([action_fmft_calc["p_0"][omega_vec_calc[0]], action_fmft_calc["p_1"][omega_vec_calc[1]]])
+
+print()
+print("p_0")
+action_angle_tools.pprint_fmft(action_fmft_calc, pl="p_0", scalar=1)
+print("p_1")
+action_angle_tools.pprint_fmft(action_fmft_calc, pl="p_1", scalar=1)
 # %%
 action_fmft = {
     "p_0": {
@@ -185,14 +191,38 @@ for i in range(2):
     # fmft_recon = np.sum([amp * np.exp(1j*freq*t) for freq,amp in list(action_fmft["p_"+str(i)].items())[:3]],axis=0)
     # axs[i].plot(t, np.abs(fmft_recon), label='FMFT Recon', alpha=0.5, c='grey', linewidth=5)
     
-    axs[i].plot(t, np.abs(complex_sol.T[i]), label='Original')
+    # axs[i].plot(t, np.abs(complex_sol.T[i]), label='Original')
+    axs[i].plot(t, np.abs(complex_sol_trans.T[i]), label="Generating Function")
     
     axs[i].plot(t, np.abs(psi_cancelled[i]), label='Cancelled')
 axs[0].legend()
-plt.show()
 # %%
 plt.plot(np.abs(complex_sol.T[0]))
 # plt.plot(complex_sol.T[0])
 plt.plot(np.abs(complex_sol.T[0] - 0.053*3.8 * (complex_sol.T[1]/5.2)))
 plt.plot(np.abs(psi_cancelled[0]))
+# %%
+fig, axs = plt.subplots(1,2, figsize=(8,3))
+t_plot = t<10
+axs[0].plot(jnp.real(complex_sol_trans[t_plot,0]), jnp.imag(complex_sol_trans[t_plot,0]), linewidth=0.5)
+axs[0].plot(jnp.real(complex_sol_trans[t_plot,1]), jnp.imag(complex_sol_trans[t_plot,1]), linewidth=0.5)
+axs[0].plot(jnp.real(psi_cancelled.T[t_plot,0]), jnp.imag(psi_cancelled.T[t_plot,0]), linewidth=0.5)
+axs[0].plot(jnp.real(psi_cancelled.T[t_plot,1]), jnp.imag(psi_cancelled.T[t_plot,1]), linewidth=0.5)
+axs[0].set_aspect('equal')
+axs[0].set_xlim(-6,6)
+axs[0].set_ylim(-6,6)
+axs[0].set_ylabel(r"$Im(X_n)$")
+axs[0].set_xlabel(r"$Re(X_n)$")
+
+axs[1].plot(t, J1, label=r"$(J_1,\phi_1)$")
+axs[1].plot(t, J2, label=r"$(J_2,\phi_2)$")
+axs[1].plot(t, np.abs(psi_cancelled[0]), label="$X_1^{(2)}$")
+axs[1].plot(t, np.abs(psi_cancelled[1]), label="$X_2^{(2)}$")
+axs[1].set_ylim(-0.2,6)
+axs[1].set_xlim(0,50)
+axs[1].set_ylabel("$J_n$")
+axs[1].set_xlabel("$t$")
+axs[1].legend(loc="upper right")
+plt.tight_layout()
+plt.savefig("figs/simple-example-computational.eps")
 # %%

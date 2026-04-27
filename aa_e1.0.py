@@ -12,6 +12,8 @@ e10_dataset = Path('datasets') / 'e_factor' / 'wf512_jac_orig' / 'npy'
 e10_sim, masses, rb_sim = action_angle_tools.load_sim(e10_dataset/"solarsystem_m560.hires.npz", np.load(e10_dataset/"solarsystem_m560.hires.npz", allow_pickle=True)['arr_0'][()]) 
 psi = np.concat([e10_sim['x'], e10_sim['y']])
 # %%
+action_angle_tools.get_planet_fmft(action_angle_tools.psi_planet_list, e10_sim['time'], psi, N=14, display=True)
+# %%
 axs = action_angle_tools.radial_plots(psi[:action_angle_tools.N], psi[action_angle_tools.N:], pl_list=action_angle_tools.planets, sym_axes=
                                 False)
 # %%
@@ -77,35 +79,39 @@ psi_cancelled, trans_fns, combs = action_angle_tools.cancel_frequencies(
     psi_decoupled, e10_sim['time'],
     omega_vec, omega_amp,
     iterations=[1,3,5], omega_pct_thresh=2e-5,
-    min_freq=20.0/action_angle_tools.TO_ARCSEC_PER_YEAR,
+    # min_freq=20.0/action_angle_tools.TO_ARCSEC_PER_YEAR,
     debug=True
 )
 # %%
 axs = action_angle_tools.radial_plots(psi_decoupled, psi_cancelled)
 # %%
 plt_lim = 100
-planet_fmft = action_angle_tools.get_planet_fmft(action_angle_tools.psi_planet_list, e10_sim['time'], psi_decoupled, N=14, fmft_alg="custom", display=True)
-fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(20,5))
+# planet_fmft = action_angle_tools.get_planet_fmft(action_angle_tools.psi_planet_list, e10_sim['time'], psi_decoupled, N=14, fmft_alg="custom", display=True)
+fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(10,3), sharex=True)
 for i, pl in enumerate(action_angle_tools.planets):
     axs[0][i].set_title(pl)
 
     fmft_recon_x = np.sum([amp * np.exp(1j*freq*e10_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i]].items()],axis=0)
     fmft_recon_y = np.sum([amp * np.exp(1j*freq*e10_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i+action_angle_tools.N]].items()],axis=0)
-    axs[0][i].plot(e10_sim['time'][plt_lim:], fmft_recon_x[plt_lim:] * np.conj(fmft_recon_x)[plt_lim:], label='FMFT Recon', alpha=0.5, c='grey')
-    axs[1][i].plot(e10_sim['time'][plt_lim:], fmft_recon_y[plt_lim:] * np.conj(fmft_recon_y)[plt_lim:], alpha=0.5, c='grey')
+    with plt.rc_context({"lines.linewidth":0.2}):
+        axs[0][i].plot(e10_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, fmft_recon_x[plt_lim:] * np.conj(fmft_recon_x)[plt_lim:], alpha=0.5, c='grey', label='FMFT')
+        axs[1][i].plot(e10_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, fmft_recon_y[plt_lim:] * np.conj(fmft_recon_y)[plt_lim:], alpha=0.5, c='grey', label='FMFT')
 
-    axs[0][i].plot(e10_sim['time'][plt_lim:], psi_decoupled[i][plt_lim:] * np.conj(psi_decoupled[i])[plt_lim:], label='Decoupled')
-    axs[1][i].plot(e10_sim['time'][plt_lim:], psi_decoupled[i+action_angle_tools.N][plt_lim:] * np.conj(psi_decoupled[i+action_angle_tools.N])[plt_lim:])
+        axs[0][i].plot(e10_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, psi_decoupled[i][plt_lim:] * np.conj(psi_decoupled[i])[plt_lim:], label='Decoup.')
+        axs[1][i].plot(e10_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, psi_decoupled[i+action_angle_tools.N][plt_lim:] * np.conj(psi_decoupled[i+action_angle_tools.N])[plt_lim:], label='Decoup.')
 
-    axs[0][i].plot(e10_sim['time'][plt_lim:], psi_cancelled[i][plt_lim:] * np.conj(psi_cancelled[i])[plt_lim:], label='Cancelled', alpha=0.8)
-    axs[1][i].plot(e10_sim['time'][plt_lim:], psi_cancelled[i+action_angle_tools.N][plt_lim:] * np.conj(psi_cancelled[i+action_angle_tools.N])[plt_lim:], alpha=0.8)
+        axs[0][i].plot(e10_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, psi_cancelled[i][plt_lim:] * np.conj(psi_cancelled[i])[plt_lim:], alpha=0.8, label='Canc.')
+        axs[1][i].plot(e10_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, psi_cancelled[i+action_angle_tools.N][plt_lim:] * np.conj(psi_cancelled[i+action_angle_tools.N])[plt_lim:], alpha=0.8, label='Canc.')
 
     axs[0][i].set_ylim(-axs[0][i].get_ylim()[1] / 10, axs[0][i].get_ylim()[1] * 1.5)
     axs[1][i].set_ylim(-axs[1][i].get_ylim()[1] / 10, axs[1][i].get_ylim()[1] * 1.5)
 axs[0][0].set_ylabel("Eccentricity")
 axs[1][0].set_ylabel("Inclination")
-axs[0][0].legend()
-plt.show()
+axs[0][7].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+fig.text(0.5, -0.04, 'Myr', ha='center')
+
+plt.tight_layout(w_pad=0.4, h_pad=1)
+plt.savefig("figs/frequency-canceling-timedom.pdf")
 # %%
 def calc_fft(time, x):
     fourier = np.fft.fft(x * np.hanning(time.shape[-1]))
@@ -116,28 +122,32 @@ def calc_fft(time, x):
 
     return freq, fourier_amp
 
-fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(20,5))
+fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(10,2.5))
 for i, pl in enumerate(action_angle_tools.planets):
     axs[0][i].set_title(pl)
 
     fmft_recon_x = np.sum([amp * np.exp(1j*freq*e10_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i]].items()],axis=0)
     fmft_recon_y = np.sum([amp * np.exp(1j*freq*e10_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i+action_angle_tools.N]].items()],axis=0)
     
-    axs[0][i].plot(*calc_fft(e10_sim['time'], fmft_recon_x), label='FMFT Recon', alpha=0.5, c='grey')
-    axs[1][i].plot(*calc_fft(e10_sim['time'], fmft_recon_y), alpha=0.5, c='grey')
+    with plt.rc_context({"lines.linewidth":0.6}):
+        axs[0][i].plot(*calc_fft(e10_sim['time'], fmft_recon_x), label='FMFT', alpha=0.5, c='grey')
+        axs[1][i].plot(*calc_fft(e10_sim['time'], fmft_recon_y), alpha=0.5, c='grey')
 
-    axs[0][i].plot(*calc_fft(e10_sim['time'], psi_decoupled[i]), label='Decoupled')
-    axs[1][i].plot(*calc_fft(e10_sim['time'], psi_decoupled[i+action_angle_tools.N]))
+        axs[0][i].plot(*calc_fft(e10_sim['time'], psi_decoupled[i]), label='Decoup.')
+        axs[1][i].plot(*calc_fft(e10_sim['time'], psi_decoupled[i+action_angle_tools.N]))
 
-    axs[0][i].plot(*calc_fft(e10_sim['time'], psi_cancelled[i]), label='Cancelled', alpha=0.8)
-    axs[1][i].plot(*calc_fft(e10_sim['time'], psi_cancelled[i+action_angle_tools.N]), alpha=0.8)
+        axs[0][i].plot(*calc_fft(e10_sim['time'], psi_cancelled[i]), label='Canc.', alpha=0.8)
+        axs[1][i].plot(*calc_fft(e10_sim['time'], psi_cancelled[i+action_angle_tools.N]), alpha=0.8)
 
     axs[0][i].set_xlim(omega_vec[i] * action_angle_tools.TO_ARCSEC_PER_YEAR - 2, omega_vec[i] * action_angle_tools.TO_ARCSEC_PER_YEAR + 2)
     axs[1][i].set_xlim(omega_vec[i+action_angle_tools.N] * action_angle_tools.TO_ARCSEC_PER_YEAR - 2, omega_vec[i+action_angle_tools.N] * action_angle_tools.TO_ARCSEC_PER_YEAR + 2)
 axs[0][0].set_ylabel("Eccentricity")
 axs[1][0].set_ylabel("Inclination")
-axs[0][0].legend()
-plt.show()
+axs[0][7].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+fig.text(0.5, -0.04, 'Frequency $\omega$ ["/yr]', ha='center')
+
+plt.tight_layout(w_pad=0.2, h_pad=1)
+plt.savefig("figs/frequency-canceling-freqdom.pdf")
 # %%
 import scipy.signal
 
@@ -159,20 +169,6 @@ peaks = peaks[np.argsort(fourier_amp[peaks])]
 fmft = {'Mercury_X':{}}
 for peak in peaks:
     fmft['Mercury_X'][freq[peak]*2*np.pi] = fourier[peak] / e10_sim['time'].shape[-1] / np.mean(np.hanning(e10_sim['time'].shape[-1]))
-#  %%
-# psi_inc = psi_decoupled[8] * psi_decoupled[9] * psi_decoupled[10] * psi_decoupled[11]
-# action_angle_tools.plot_action(psi_inc, e10_sim['time'], take_mag=True)
-# action_angle_tools.plot_action(C_inc, e10_sim['time'], take_mag=False)
-
-psi_ecc = psi_decoupled[0] * psi_decoupled[1] * psi_decoupled[2] * psi_decoupled[3]
-action_angle_tools.plot_action(psi_ecc * np.conj(psi_ecc), e10_sim['time'], take_mag=True)
-action_angle_tools.plot_action(C_ecc, e10_sim['time'], take_mag=False)
-# %%
-# plt.plot(np.sum([amp * np.exp(1j*freq*e10_sim['time']) for freq,amp in planet_fmft['Mercury_X'].items()],axis=0))
-plt.plot(psi_decoupled[8])
-# plt.plot(np.fft.ifft(fourier) / np.hanning(e10_sim['time'].shape[-1]))
-plt.plot(np.sum([amp * np.exp(1j*freq*e10_sim['time']) for freq,amp in planet_fmft['Mercury_X'].items()],axis=0))
-plt.plot(np.sum([amp * np.exp(1j*freq*e10_sim['time']) for freq,amp in fmft['Mercury_X'].items()],axis=0))
 # %%
 plt.plot(psi_decoupled[10] * np.conj(psi_decoupled[10]))
 plt.plot(psi_decoupled[11] * np.conj(psi_decoupled[11]))
@@ -200,125 +196,15 @@ C_inc = gamma_1 @ X
 gamma_opt = found_combs[-1]
 C_opt = C_opts[-1]
 # %%
-psi_comb = found_combs @ psi_decoupled #np.array([found_combs @ psi_decoupled for C_opt in C_opts])
-
-# for i in range(len(psi_comb)):
-#     action_angle_tools.plot_action(psi_comb[i] , e10_sim['time'], take_mag=True)
-
-# plt.plot(psi_inc * np.conj(psi_inc))
-
-action_angle_tools.plot_action(gamma_1 @ psi_decoupled , e10_sim['time'], take_mag=True)
-action_angle_tools.plot_action(gamma_0 @ psi_decoupled , e10_sim['time'], take_mag=True)
-# %%
-# action_angle_tools.plot_action(psi[0], e10_sim['time'], take_mag=True, label=r"$\Psi$")
-# action_angle_tools.plot_action(psi_decoupled[0], e10_sim['time'], take_mag=True, label=r"$\Psi_{decoupled}$")
-# action_angle_tools.plot_action(psi_cancelled[0], e10_sim['time'], take_mag=True, label=r"$\Psi_{cancelled}$")
-action_angle_tools.plot_action(C_ecc, e10_sim['time'], take_mag=False, label="$C_{ecc}$")
-# action_angle_tools.plot_action(C_inc , e10_sim['time'], take_mag=False, label="$C_{inc}$")
+action_angle_tools.plot_action(psi[0], e10_sim['time']*action_angle_tools.TO_YEAR*1e-6, take_mag=True, label=r"$\Psi$")
+action_angle_tools.plot_action(psi_decoupled[0], e10_sim['time']*action_angle_tools.TO_YEAR*1e-6, take_mag=True, label=r"$\Psi_{decoupled}$")
+action_angle_tools.plot_action(psi_cancelled[0], e10_sim['time']*action_angle_tools.TO_YEAR*1e-6, take_mag=True, label=r"$\Psi_{cancelled}$")
+action_angle_tools.plot_action(C_ecc, e10_sim['time']*action_angle_tools.TO_YEAR*1e-6, take_mag=False, label="$C_{ecc}$")
+action_angle_tools.plot_action(C_inc , e10_sim['time']*action_angle_tools.TO_YEAR*1e-6, take_mag=False, label="$C_{inc}$")
 # plt.xlim(0,0.6e8)
 # action_angle_tools.plot_action(C_opt , e10_sim['time'], take_mag=False, label="$C_{opt}$")
 plt.legend()
-# %%
-cancel = gamma_1 @ psi_decoupled
-sig = C_inc + 1e-6 * (cancel + np.conj(cancel))
-
-plt.plot(sig)
-# %%
-# psi_comb = C_opts[-5:-1]
-# psi_comb = [C_opts[-1]]
-psi_comb = [C_ecc, C_inc]
-for i in range(len(psi_comb)):
-    n = e10_sim['time'].shape[-1]
-    # h = np.hanning(n) + 0.01
-    h = np.ones(n)
-    fourier = np.fft.fft(psi_comb[i] * h)
-    fourier[1:n//2] = 0
-
-    psi_comb[i] = np.fft.ifft(fourier) / np.mean(h) / h
-psi_comb = np.array(psi_comb)
-psi_comb -= np.broadcast_to(psi_comb.mean(axis=1)[None].T, psi_comb.shape)
-psi_comb /= psi_comb[0,0]
-
-for i in range(len(psi_comb)):
-    plt.plot(e10_sim['time'], C_opts[-1])
-    p = psi_comb[i] + np.conj(psi_comb[i])
-    plt.plot(e10_sim['time'], p - p.mean()/2)
-# %%
-action_fmft = action_angle_tools.get_planet_fmft(["p_"+str(i) for i in range(len(psi_comb))], e10_sim['time'], psi_comb, N=10, fmft_alg="default", display=True)
-# %%
-import sympy
-
-trans_fns = [[]] * len(psi_comb)
-x_val = psi
-x = [sympy.Symbol("X_"+str(i)) for i in range(action_angle_tools.N*2)]
-x_bar_0 = [sympy.Symbol("\\bar X^{(0)}_"+str(i)) for i in range(action_angle_tools.N*2)]
-
-x_bars = [x_bar_0]
-subs = {x_bar_0[i]: x[i] for i in range(action_angle_tools.N*2)}
-
-fig, axs = plt.subplots(1, len(psi_comb), figsize=(20,5))
-for i in range(len(psi_comb)):
-    print("p_"+str(i))
-
-    fmft_recon = np.sum([amp * np.exp(1j*freq*e10_sim['time']) for freq,amp in action_fmft["p_"+str(i)].items()],axis=0)
-    axs[i].plot(e10_sim['time'], np.real(fmft_recon), label='FMFT Recon', alpha=0.5, c='grey')
-
-    axs[i].plot(e10_sim['time'], psi_comb[i], label=r'$\Psi$')
-
-    comb = {}
-    omega_pct_thresh=1e-4
-    omega_abs_thresh=1e-3
-    for o in omega_vec:
-        for k in action_angle_tools.get_k_vecs(3, -1, [], action_angle_tools.N, include_negative=True):
-            omega = k @ omega_vec
-            omega_N,amp = action_angle_tools.closest_key_entry(action_fmft["p_"+str(i)], omega - o)
-            omega_pct_error = np.abs(omega_N/omega-1)
-            omega_abs_error = np.abs(omega_N - omega)
-        
-            # if the frequency is close to a frequency that exists in the planet
-            if omega_pct_error<omega_pct_thresh and omega_abs_error < omega_abs_thresh:
-                # check if we already found a kvec that matches this frequency
-                omega_N_exists = False
-                to_del = []
-                for old_k,(_, old_omega, old_err) in comb.items():
-                    if old_omega == omega_N:
-                        omega_N_exists = True
-                        # if our new kvec is better than the old one, delete it
-                        if old_err > omega_pct_error:
-                            # del comb[old_k]
-                            to_del.append(old_k)
-                            omega_N_exists = False
-                for d in to_del:
-                    del comb[d]
-                # add new kvec if it is better or there wasn't an existing one with the same frequency
-                if not omega_N_exists:
-                    comb[tuple(k)] = (amp, omega_N, omega_pct_error)
-        print(o * action_angle_tools.TO_ARCSEC_PER_YEAR)
-        for k,(amp, omega, err) in comb.items():
-            k = np.array(k)
-            print(k,"\t{:+07.3f}\t{:.1g},\t{:.1g}".format((omega-o)*action_angle_tools.TO_ARCSEC_PER_YEAR,err,np.abs(amp)))
-    
-    # loop through each object
-    for j in range(N*2):
-        # to first order the coordinate is the original coordinate
-        x_bar_i_j = x_bars[-1][j]
-        # correct for each combination
-        for k,(amp, omega, _) in comb[j].items():
-            term = amp
-            # loop through each object
-            delta = 0
-            for k_idx in range(N*2):
-                # add each object the correct number of times
-                for l in range(np.abs(k[k_idx])):
-                    term *= x_bars[-1][k_idx]/omega_amp[k_idx] if k[k_idx] > 0 else x_bars[-1][k_idx].conjugate()/np.conj(omega_amp[k_idx])
-            x_bar_i_j -= term
-        subs[x_bar_i[j]] = x_bar_i_j
-    x_bars.append(x_bar_i)
-    trans_fns.append(eval_transform(x_bars, subs))
-
-    # axs[i].set_ylim(-axs[i].get_ylim()[1] / 10, axs[i].get_ylim()[1] * 1.5)
-axs[0].legend()
-plt.show()
+plt.xlabel("Myr")
 # %%
 e10_sim_long, masses, rb_sim = action_angle_tools.load_sim(e10_dataset/"solarsystem_m560.npz", np.load(e10_dataset/"solarsystem_m560.npz", allow_pickle=True)['arr_0'][()]) 
 psi_long = np.concat([e10_sim_long['x'], e10_sim_long['y']])
@@ -338,7 +224,7 @@ action_angle_tools.plot_action(C_ecc_long, e10_sim_long['time'], take_mag=False,
 action_angle_tools.plot_action(C_inc_long, e10_sim_long['time'], take_mag=False, label="$C_{inc}$")
 # action_angle_tools.plot_action(C_opt_long, e10_sim_long['time'], take_mag=False, label="$C_{opt}$")
 
-plt.plot(e10_sim_long['time'], e10_sim_long['e'][0], color='black', linewidth=0.5)
+plt.plot(e10_sim_long['time'], e10_sim_long['e'][0]**2*10, color='black', linewidth=0.5)
 
 plt.ylim(-1,5)
 # plt.xlim(0, 0.5e10)
@@ -352,4 +238,40 @@ action_angle_tools.plot_action(C_ecc_long, e10_sim_long['time'], take_mag=False,
 # action_angle_tools.plot_action(psi_inc_long, e10_sim_long['time'], take_mag=True, label="$C_{ecc}$")
 # action_angle_tools.plot_action(C_inc_long, e10_sim_long['time'], take_mag=False, label="$C_{ecc}$")
 plt.ylim(-1,5)
+# %%
+from matplotlib.patches import Rectangle
+mag = lambda x: np.real(x * np.conj(x))
+mag_norm = lambda x: mag(x) - np.mean(mag(x))
+
+fig, axs = plt.subplots(1, 2, figsize=(7,2.5))
+
+short_time = e10_sim['time']*action_angle_tools.TO_YEAR*1e-6
+scalar = 1e9
+with plt.rc_context({"lines.linewidth":0.4}):
+    axs[0].plot(short_time,  mag_norm(psi[0]) * scalar, label=r"$X$")
+    axs[0].plot(short_time,  mag_norm(psi_decoupled[0]) * scalar, label=r"$X_\text{decoupled}$")
+    axs[0].plot(short_time,  mag_norm(psi_cancelled[0]) * scalar, label=r"$X_\text{canceled}$")
+    axs[0].plot(short_time,  (C_ecc - np.mean(C_ecc)) * scalar, label=r"$C_\text{inc}$")
+    axs[0].plot(short_time,  (C_inc - np.mean(C_ecc)) * 1e8, label=r"$C_\text{inc}$")
+axs[0].set_xlabel("Myr")
+axs[0].set_ylabel("Normalized Action Value")
+axs[0].set_xlim(0,30)
+
+long_time = e10_sim_long['time']*action_angle_tools.TO_YEAR*1e-9
+with plt.rc_context({"lines.linewidth":0.2}):
+    axs[1].plot(long_time, (mag(psi_long[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, label=r"$X$")
+    axs[1].plot(long_time, (mag(psi_long_decoupled[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, label=r"$X_\text{decoupled}$")
+    axs[1].plot(long_time, (mag(psi_long_cancelled[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, label=r"$X_\text{canceled}$")
+    axs[1].plot(long_time,  (C_ecc_long - np.mean(C_ecc_long[:-100])) * scalar, label=r"$C_\text{inc}$")
+    axs[1].plot(long_time,  (C_inc_long - np.mean(C_inc_long[:-100])) * 1e8, label=r"$C_\text{inc}$")
+plt.plot(long_time, e10_sim_long['e'][0], color='black', linewidth=0.5, label=r'Mercury $e$')
+axs[1].set_ylim(-3,15)
+axs[1].set_xlabel("Gyr")
+axs[1].add_patch(Rectangle((0, -2.5), 0.03, 6,facecolor="grey",lw=1, alpha=0.5))
+axs[1].set_xlim(0,5)
+
+axs[1].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+plt.tight_layout()
+plt.savefig("figs/actions-predict-instability.eps")
 # %%

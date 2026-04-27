@@ -195,6 +195,22 @@ def radial_plots(psi1, psi2, sym_axes=True, pl_list=None):
     
     return axs
 
+def pprint_fmft(fmft, pl, scalar=TO_ARCSEC_PER_YEAR):
+    begin = r"""\begin{tabular}{l c c}
+\toprule
+Frequency & Amplitude \\ \midrule"""
+
+    end = r"""\bottomrule
+\end{tabular}"""
+
+    print(begin)
+
+    planet_freqs = np.array(list(fmft[pl].keys()))
+    for i,f in enumerate(planet_freqs):
+        print(f"{f * scalar:+07.3f} & {np.abs(fmft[pl][f]):0.8f} $\\measuredangle$ {np.angle(fmft[pl][f]):.2f} \\\\")
+
+    print(end)
+
 ##########################################
 ### Decoupling Modes
 ##########################################
