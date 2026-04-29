@@ -83,40 +83,45 @@ print(omega_amp)
 psi_cancelled, trans_fns, combs = action_angle_tools.cancel_frequencies(
     psi_decoupled, e05_sim['time'],
     omega_vec, omega_amp,
-    iterations=[5], omega_pct_thresh=2e-5,
+    iterations=[1,3,5], omega_pct_thresh=2e-5,
     debug=True
 )
 # %%
 axs = action_angle_tools.radial_plots(psi_decoupled, psi_cancelled)
 # %%
+plt_lim = 100
 planet_fmft = action_angle_tools.get_planet_fmft(action_angle_tools.psi_planet_list, e05_sim['time'], psi_decoupled, N=14, fmft_alg="default", display=True)
-planet_fmft_cancelled = action_angle_tools.get_planet_fmft(action_angle_tools.psi_planet_list, e05_sim['time'], psi_cancelled, N=14, fmft_alg="default", display=True)
-fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(20,5))
+# planet_fmft_cancelled = action_angle_tools.get_planet_fmft(action_angle_tools.psi_planet_list, e05_sim['time'], psi_cancelled, N=14, fmft_alg="default", display=True)
+fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(10,3), sharex=True)
 for i, pl in enumerate(action_angle_tools.planets):
     axs[0][i].set_title(pl)
 
     fmft_recon_x = np.sum([amp * np.exp(1j*freq*e05_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i]].items()],axis=0)
     fmft_recon_y = np.sum([amp * np.exp(1j*freq*e05_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i+action_angle_tools.N]].items()],axis=0)
-    axs[0][i].plot(e05_sim['time'][100:], fmft_recon_x[100:] * np.conj(fmft_recon_x)[100:], label='FMFT Recon', alpha=0.5, c='grey')
-    axs[1][i].plot(e05_sim['time'][100:], fmft_recon_y[100:] * np.conj(fmft_recon_y)[100:], alpha=0.5, c='grey')
+    with plt.rc_context({"lines.linewidth":0.2}):
+        axs[0][i].plot(e05_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, fmft_recon_x[plt_lim:] * np.conj(fmft_recon_x)[plt_lim:], alpha=0.5, c='grey', label='FMFT')
+        axs[1][i].plot(e05_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, fmft_recon_y[plt_lim:] * np.conj(fmft_recon_y)[plt_lim:], alpha=0.5, c='grey', label='FMFT')
 
-    # fmft_recon_x = np.sum([amp * np.exp(1j*freq*e05_sim['time']) for freq,amp in planet_fmft_cancelled[action_angle_tools.psi_planet_list[i]].items()],axis=0)
-    # fmft_recon_y = np.sum([amp * np.exp(1j*freq*e05_sim['time']) for freq,amp in planet_fmft_cancelled[action_angle_tools.psi_planet_list[i+action_angle_tools.N]].items()],axis=0)
-    # axs[0][i].plot(e05_sim['time'][100:], fmft_recon_x[100:] * np.conj(fmft_recon_x)[100:], label='FMFT Recon cancelled', c='black')
-    # axs[1][i].plot(e05_sim['time'][100:], fmft_recon_y[100:] * np.conj(fmft_recon_y)[100:], c='black')
+        # fmft_recon_x = np.sum([amp * np.exp(1j*freq*e05_sim['time']) for freq,amp in planet_fmft_cancelled[action_angle_tools.psi_planet_list[i]].items()],axis=0)
+        # fmft_recon_y = np.sum([amp * np.exp(1j*freq*e05_sim['time']) for freq,amp in planet_fmft_cancelled[action_angle_tools.psi_planet_list[i+action_angle_tools.N]].items()],axis=0)
+        # axs[0][i].plot(e05_sim['time'][100:], fmft_recon_x[100:] * np.conj(fmft_recon_x)[100:], label='FMFT Recon cancelled', c='black')
+        # axs[1][i].plot(e05_sim['time'][100:], fmft_recon_y[100:] * np.conj(fmft_recon_y)[100:], c='black')
 
-    axs[0][i].plot(e05_sim['time'][100:], psi_decoupled[i][100:] * np.conj(psi_decoupled[i])[100:], label='Decoupled')
-    axs[1][i].plot(e05_sim['time'][100:], psi_decoupled[i+action_angle_tools.N][100:] * np.conj(psi_decoupled[i+action_angle_tools.N])[100:])
+        axs[0][i].plot(e05_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, psi_decoupled[i][plt_lim:] * np.conj(psi_decoupled[i])[plt_lim:], label='Decoup.')
+        axs[1][i].plot(e05_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, psi_decoupled[i+action_angle_tools.N][plt_lim:] * np.conj(psi_decoupled[i+action_angle_tools.N])[plt_lim:], label='Decoup.')
 
-    axs[0][i].plot(e05_sim['time'][100:], psi_cancelled[i][100:] * np.conj(psi_cancelled[i])[100:], label='Cancelled', alpha=0.8)
-    axs[1][i].plot(e05_sim['time'][100:], psi_cancelled[i+action_angle_tools.N][100:] * np.conj(psi_cancelled[i+action_angle_tools.N])[100:], alpha=0.8)
+        axs[0][i].plot(e05_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, psi_cancelled[i][plt_lim:] * np.conj(psi_cancelled[i])[plt_lim:], alpha=0.8, label='Canc.')
+        axs[1][i].plot(e05_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, psi_cancelled[i+action_angle_tools.N][plt_lim:] * np.conj(psi_cancelled[i+action_angle_tools.N])[plt_lim:], alpha=0.8, label='Canc.')
 
     axs[0][i].set_ylim(-axs[0][i].get_ylim()[1] / 10, axs[0][i].get_ylim()[1] * 1.5)
     axs[1][i].set_ylim(-axs[1][i].get_ylim()[1] / 10, axs[1][i].get_ylim()[1] * 1.5)
 axs[0][0].set_ylabel("Eccentricity")
 axs[1][0].set_ylabel("Inclination")
-axs[0][0].legend()
-plt.show()
+axs[0][7].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+fig.text(0.5, -0.04, 'Myr', ha='center')
+
+plt.tight_layout(w_pad=0.4, h_pad=1)
+plt.savefig("figs/frequency-canceling-timedom-e05.pdf")
 # %%
 def calc_fft(time, x):
     fourier = np.fft.fft(x * np.hanning(time.shape[-1]))
@@ -127,33 +132,39 @@ def calc_fft(time, x):
 
     return freq, fourier_amp
 
-fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(20,5))
+fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(10,2.5))
 for i, pl in enumerate(action_angle_tools.planets):
     axs[0][i].set_title(pl)
 
     fmft_recon_x = np.sum([amp * np.exp(1j*freq*e05_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i]].items()],axis=0)
     fmft_recon_y = np.sum([amp * np.exp(1j*freq*e05_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i+action_angle_tools.N]].items()],axis=0)
     
-    axs[0][i].plot(*calc_fft(e05_sim['time'], fmft_recon_x), label='FMFT Recon', alpha=0.5, c='grey')
-    axs[1][i].plot(*calc_fft(e05_sim['time'], fmft_recon_y), alpha=0.5, c='grey')
+    with plt.rc_context({"lines.linewidth":0.6}):
+        axs[0][i].plot(*calc_fft(e05_sim['time'], fmft_recon_x), label='FMFT', alpha=0.5, c='grey')
+        axs[1][i].plot(*calc_fft(e05_sim['time'], fmft_recon_y), alpha=0.5, c='grey')
 
-    axs[0][i].plot(*calc_fft(e05_sim['time'], psi_decoupled[i]), label='Decoupled')
-    axs[1][i].plot(*calc_fft(e05_sim['time'], psi_decoupled[i+action_angle_tools.N]))
+        axs[0][i].plot(*calc_fft(e05_sim['time'], psi_decoupled[i]), label='Decoup.')
+        axs[1][i].plot(*calc_fft(e05_sim['time'], psi_decoupled[i+action_angle_tools.N]))
 
-    axs[0][i].plot(*calc_fft(e05_sim['time'], psi_cancelled[i]), label='Cancelled', alpha=0.8)
-    axs[1][i].plot(*calc_fft(e05_sim['time'], psi_cancelled[i+action_angle_tools.N]), alpha=0.8)
+        axs[0][i].plot(*calc_fft(e05_sim['time'], psi_cancelled[i]), label='Canc.', alpha=0.8)
+        axs[1][i].plot(*calc_fft(e05_sim['time'], psi_cancelled[i+action_angle_tools.N]), alpha=0.8)
 
     axs[0][i].set_xlim(omega_vec[i] * action_angle_tools.TO_ARCSEC_PER_YEAR - 2, omega_vec[i] * action_angle_tools.TO_ARCSEC_PER_YEAR + 2)
     axs[1][i].set_xlim(omega_vec[i+action_angle_tools.N] * action_angle_tools.TO_ARCSEC_PER_YEAR - 2, omega_vec[i+action_angle_tools.N] * action_angle_tools.TO_ARCSEC_PER_YEAR + 2)
 axs[0][0].set_ylabel("Eccentricity")
 axs[1][0].set_ylabel("Inclination")
-axs[0][0].legend()
-plt.show()
+axs[0][7].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+fig.text(0.5, -0.04, 'Frequency $\omega$ ["/yr]', ha='center')
+
+plt.tight_layout(w_pad=0.2, h_pad=1)
+plt.savefig("figs/frequency-canceling-freqdom-e05.pdf")
 # %%
+short_time = e05_sim['time']*action_angle_tools.TO_YEAR*1e-6
+plt.figure(figsize=(6,2.5))
 psi_curr = psi_decoupled
-plt.plot(psi_curr[10] * np.conj(psi_curr[10]))
-plt.plot(psi_curr[11] * np.conj(psi_curr[11]))
-plt.plot(psi_curr[10] * np.conj(psi_curr[10]) + psi_curr[11] * np.conj(psi_curr[11]))
+plt.plot(short_time, psi_curr[10] * np.conj(psi_curr[10]), color="grey")
+plt.plot(short_time, psi_curr[11] * np.conj(psi_curr[11]), color="grey")
+plt.plot(short_time, psi_curr[10] * np.conj(psi_curr[10]) + psi_curr[11] * np.conj(psi_curr[11]), color="grey")
 
 # psi_curr = psi_cancelled
 # planet_fmft = action_angle_tools.get_planet_fmft(action_angle_tools.psi_planet_list, e05_sim['time'], psi_curr, N=14, fmft_alg="default", display=True)
@@ -163,9 +174,17 @@ plt.plot(psi_curr[10] * np.conj(psi_curr[10]) + psi_curr[11] * np.conj(psi_curr[
 earth_y = psi_cancelled[10]
 mars_y = psi_cancelled[11]
 
-plt.plot(earth_y * np.conj(earth_y))
-plt.plot(mars_y * np.conj(mars_y))
-plt.plot(earth_y * np.conj(earth_y) + mars_y * np.conj(mars_y))
+plt.plot(short_time, earth_y * np.conj(earth_y), label=r"$\mathcal{Y}_3$")
+plt.plot(short_time, mars_y * np.conj(mars_y), label=r"$\mathcal{Y}_4$")
+plt.plot(short_time, earth_y * np.conj(earth_y) + mars_y * np.conj(mars_y), label=r"$\mathcal{Y}_3 + \mathcal{Y}_4$")
+
+plt.xlim(0,30)
+plt.ylabel("Action")
+plt.xlabel("Myr")
+plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+plt.tight_layout()
+plt.savefig("figs/e05-action-combinations-debug.eps")
 # %%
 X, C_opts, found_combs = action_angle_tools.pca_combs(psi_decoupled)
 

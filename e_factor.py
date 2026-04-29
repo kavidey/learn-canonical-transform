@@ -30,6 +30,28 @@ plt.tight_layout()
 plt.savefig("figs/e10-batch.eps", dpi=450)
 # %%
 plt.figure(figsize=(5,3))
+for sim in e09_sims:
+    plt.plot(sim['time']*action_angle_tools.TO_YEAR/1e9, sim['e'][0], linewidth=0.2, rasterized=True)
+plt.xlim(0,5)
+plt.ylim(0,1)
+plt.xlabel("Gyr")
+plt.ylabel("$e$")
+
+plt.tight_layout()
+plt.savefig("figs/e09-batch.eps", dpi=450)
+# %%
+plt.figure(figsize=(5,3))
+for sim in e07_sims:
+    plt.plot(sim['time']*action_angle_tools.TO_YEAR/1e9, sim['e'][0], linewidth=0.2, rasterized=True)
+plt.xlim(0,5)
+plt.ylim(0,1)
+plt.xlabel("Gyr")
+plt.ylabel("$e$")
+
+plt.tight_layout()
+plt.savefig("figs/e07-batch.eps", dpi=450)
+# %%
+plt.figure(figsize=(5,2.5))
 for i, sim in enumerate(e10_sims):
     plt.plot(sim['time']*action_angle_tools.TO_YEAR/1e9, sim['e'][0], linewidth=0.2, color='lightgrey', rasterized=True, label=r'$e \sim 1.0$ sims' if i==0 else None)
 for sim in e05_sims:
@@ -38,10 +60,44 @@ plt.xlim(0,5)
 plt.ylim(0,1)
 plt.xlabel("Gyr")
 plt.ylabel("$e$")
-plt.legend()
+
+leg = plt.legend()
+for line in leg.get_lines():
+    line.set_linewidth(2.0)
 
 plt.tight_layout()
 plt.savefig("figs/e05-batch.eps", dpi=450)
+# %%
+import matplotlib as mpl
+
+cmap = mpl.colormaps['magma']
+colors = cmap(np.linspace(0.1, 0.8, 4))
+
+skipi = 1 # increase this for faster plotting
+
+plt.figure(figsize=(4,3))
+
+with plt.rc_context({"lines.linewidth":0.2}):
+    for i, sim in enumerate(e10_sims[::skipi]):
+        plt.plot(sim['time']*action_angle_tools.TO_YEAR/1e9, sim['e'][0], color=colors[0], rasterized=True, label=r'$1.0$' if i==0 else None)
+    for i, sim in enumerate(e09_sims[::skipi]):
+        plt.plot(sim['time']*action_angle_tools.TO_YEAR/1e9, sim['e'][0], color=colors[1], rasterized=True, label=r'$0.9$' if i==0 else None)
+    for i, sim in enumerate(e07_sims[::skipi]):
+        plt.plot(sim['time']*action_angle_tools.TO_YEAR/1e9, sim['e'][0], color=colors[2], rasterized=True, label=r'$0.7$' if i==0 else None)
+    for i, sim in enumerate(e05_sims[::skipi]):
+        plt.plot(sim['time']*action_angle_tools.TO_YEAR/1e9, sim['e'][0], color=colors[3], rasterized=True, label=r'$0.5$' if i==0 else None)
+
+plt.xlim(0,5)
+plt.ylim(0,1)
+plt.xlabel("Gyr")
+plt.ylabel("$e$")
+
+leg = plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.25), ncol=4)
+for line in leg.get_lines():
+    line.set_linewidth(2.0)
+
+plt.tight_layout()
+plt.savefig("figs/e-all-batches.eps", dpi=450)
 # %%
 def find_unstable(sims):
     unstable_e = []
@@ -69,9 +125,20 @@ instability_rate, ci95 = zip(*map(
     lambda k: calculate_instability_statistics(k, 1200),
     [len(e05_unstable_idx), len(e07_unstable_idx), len(e09_unstable_idx), len(e10_unstable_idx)]
 ))
+instability_rate = np.array(instability_rate) * 100
+ci95 = np.array(ci95) * 100
 # %%
-plt.figure(figsize=(5,3))
-plt.errorbar([0.5, 0.7, 0.9, 1.0], np.array(instability_rate)*100, yerr=np.array(ci95)*100, capsize=3, fmt="r--o", ecolor = "black")
+ymax = ci95.copy()
+ymin = ci95.copy()
+ymin[0] = 0
+ymax[0] = (3/1200) * 100 # use rule of 3 to estimate chance of instability happening in e~0.5
+
+yerr = [ymin, ymax]
+
+e = np.array([0.5, 0.7, 0.9, 1.0])
+plt.figure(figsize=(4,3))
+plt.errorbar(e, instability_rate, yerr=yerr, capsize=3, fmt="none", ecolor = "black", zorder=0)
+plt.scatter(e, instability_rate, c=colors, zorder=10)
 plt.xlabel("$e$ reduction")
 plt.ylabel("Instability %")
 
