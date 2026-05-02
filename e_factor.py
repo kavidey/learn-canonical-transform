@@ -136,11 +136,12 @@ ymax[0] = (3/1200) * 100 # use rule of 3 to estimate chance of instability happe
 yerr = [ymin, ymax]
 
 e = np.array([0.5, 0.7, 0.9, 1.0])
-plt.figure(figsize=(4,3))
-plt.errorbar(e, instability_rate, yerr=yerr, capsize=3, fmt="none", ecolor = "black", zorder=0)
-plt.scatter(e, instability_rate, c=colors, zorder=10)
-plt.xlabel("$e$ reduction")
-plt.ylabel("Instability %")
+fig, ax = plt.subplots(1, 1, figsize=(4,3))
+ax.errorbar(e, instability_rate, yerr=yerr, capsize=3, fmt="none", ecolor = "black", zorder=0)
+ax.scatter(e, instability_rate, c=colors[::-1], zorder=10)
+ax.set_xlabel("$e$ reduction")
+ax.set_ylabel("Instability %")
+ax.set_xticks([0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
 
 plt.tight_layout()
 plt.savefig("figs/instability-rate.eps")

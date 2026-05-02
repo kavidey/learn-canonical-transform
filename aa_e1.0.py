@@ -26,6 +26,42 @@ psi_decoupled[[8,9,10,11,12,13,14,15]] = psi_decoupled[[9,12,13,10,15,11,8,14]]
 # %%
 # axs = action_angle_tools.radial_plots(psi, psi_decoupled, sym_axes=False)
 # %%
+fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(10,2.5), sharex=True, sharey=True)
+for i, pl in enumerate(action_angle_tools.planets):
+    axs[0][i].set_title(pl)
+
+    with plt.rc_context({"lines.linewidth":0.2}):
+        mean_x = np.abs(psi[i]).mean()
+        mean_y = np.abs(psi[i+action_angle_tools.N]).mean()
+        axs[0][i].plot(np.real(psi[i])/mean_x, np.imag(psi[i])/mean_x, alpha=0.5, c='grey', label='FMFT')
+        axs[1][i].plot(np.real(psi[i+action_angle_tools.N])/mean_y, np.imag(psi[i+action_angle_tools.N])/mean_y, alpha=0.5, c='grey', label='FMFT')
+
+        mean_decoup_x = mean_x # np.abs(psi_decoupled[i]).mean()
+        mean_decoup_y = mean_y # np.abs(psi_decoupled[i+action_angle_tools.N]).mean()
+        axs[0][i].plot(np.real(psi_decoupled[i])/mean_decoup_x, np.imag(psi_decoupled[i])/mean_decoup_x, label='Decoup.')
+        axs[1][i].plot(np.real(psi_decoupled[i+action_angle_tools.N])/mean_decoup_y, np.imag(psi_decoupled[i+action_angle_tools.N])/mean_decoup_y, label='Decoup.')
+
+    axs[0][i].set_aspect('equal')
+    axs[1][i].set_aspect('equal')
+    # axs[0][i].set_yticklabels([])
+    # axs[1][i].set_yticklabels([])
+    # axs[0][i].set_xticklabels([])
+    # axs[1][i].set_xticklabels([])
+
+axs[1][4].scatter(np.real(psi_decoupled[12]), np.imag(psi_decoupled[12]), color="tab:blue", s=0.1)
+
+axs[0][0].set_ylabel("Eccentricity")
+axs[1][0].set_ylabel("Inclination")
+# leg = axs[0][7].legend(loc='center left', bbox_to_anchor=(1, 0.5))
+leg = axs[0,4].legend(loc='upper center', bbox_to_anchor=(0, 1.75), ncol=2)
+
+for line in leg.get_lines():
+    line.set_linewidth(1.0)
+
+fig.text(0.5, -0.04, r'Re$\{x\}$', ha='center')
+fig.text(0.91, 0.5, r'Im$\{x\}$', va='center', rotation=90)
+plt.savefig("figs/radial-plots-decoupling.pdf", bbox_inches="tight")
+# %%
 planet_fmft = action_angle_tools.get_planet_fmft(action_angle_tools.psi_planet_list, e10_sim['time'], psi_decoupled, N=14, display=True)
 # %%
 g_vec = np.zeros(8)
@@ -124,7 +160,7 @@ def calc_fft(time, x):
 
     return freq, fourier_amp
 
-fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(10,2.5))
+fig, axs = plt.subplots(2, action_angle_tools.N, figsize=(10,3), sharey=True)
 for i, pl in enumerate(action_angle_tools.planets):
     axs[0][i].set_title(pl)
 
@@ -132,14 +168,16 @@ for i, pl in enumerate(action_angle_tools.planets):
     fmft_recon_y = np.sum([amp * np.exp(1j*freq*e10_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i+action_angle_tools.N]].items()],axis=0)
     
     with plt.rc_context({"lines.linewidth":0.6}):
-        axs[0][i].plot(*calc_fft(e10_sim['time'], fmft_recon_x), label='FMFT', alpha=0.5, c='grey')
-        axs[1][i].plot(*calc_fft(e10_sim['time'], fmft_recon_y), alpha=0.5, c='grey')
+        normalize_ecc = np.abs(fmft_recon_x).max() * 1000
+        normalize_inc = np.abs(fmft_recon_y).max() * 1000
+        axs[0][i].plot(*calc_fft(e10_sim['time'], fmft_recon_x/normalize_ecc), label='FMFT', alpha=0.5, c='grey')
+        axs[1][i].plot(*calc_fft(e10_sim['time'], fmft_recon_y/normalize_inc), alpha=0.5, c='grey')
 
-        axs[0][i].plot(*calc_fft(e10_sim['time'], psi_decoupled[i]), label='Decoup.')
-        axs[1][i].plot(*calc_fft(e10_sim['time'], psi_decoupled[i+action_angle_tools.N]))
+        axs[0][i].plot(*calc_fft(e10_sim['time'], psi_decoupled[i]/normalize_ecc), label='Decoup.')
+        axs[1][i].plot(*calc_fft(e10_sim['time'], psi_decoupled[i+action_angle_tools.N]/normalize_inc))
 
-        axs[0][i].plot(*calc_fft(e10_sim['time'], psi_cancelled[i]), label='Canc.', alpha=0.8)
-        axs[1][i].plot(*calc_fft(e10_sim['time'], psi_cancelled[i+action_angle_tools.N]), alpha=0.8)
+        axs[0][i].plot(*calc_fft(e10_sim['time'], psi_cancelled[i]/normalize_ecc), label='Canc.', alpha=0.8)
+        axs[1][i].plot(*calc_fft(e10_sim['time'], psi_cancelled[i+action_angle_tools.N]/normalize_inc), alpha=0.8)
 
     axs[0][i].set_xlim(omega_vec[i] * action_angle_tools.TO_ARCSEC_PER_YEAR - 2, omega_vec[i] * action_angle_tools.TO_ARCSEC_PER_YEAR + 2)
     axs[1][i].set_xlim(omega_vec[i+action_angle_tools.N] * action_angle_tools.TO_ARCSEC_PER_YEAR - 2, omega_vec[i+action_angle_tools.N] * action_angle_tools.TO_ARCSEC_PER_YEAR + 2)
