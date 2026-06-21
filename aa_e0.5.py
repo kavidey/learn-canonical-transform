@@ -186,6 +186,46 @@ plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 plt.tight_layout()
 plt.savefig("figs/e05-action-combinations-debug.eps")
 # %%
+# %%
+short_time = e05_sim['time']*action_angle_tools.TO_YEAR*1e-6
+plt.figure(figsize=(3.5,3))
+psi_curr = psi_decoupled
+plt.plot(short_time, psi_curr[10] * np.conj(psi_curr[10]), color="grey")
+plt.plot(short_time, psi_curr[11] * np.conj(psi_curr[11]), color="grey")
+plt.plot(short_time, psi_curr[10] * np.conj(psi_curr[10]) + psi_curr[11] * np.conj(psi_curr[11]), color="grey")
+
+earth_y = psi_cancelled[10]
+mars_y = psi_cancelled[11]
+
+plt.plot(short_time, earth_y * np.conj(earth_y), label=r"$\mathcal{Y}_3$")
+plt.plot(short_time, mars_y * np.conj(mars_y), label=r"$\mathcal{Y}_4$")
+plt.plot(short_time, earth_y * np.conj(earth_y) + mars_y * np.conj(mars_y), label=r"$\mathcal{Y}_3 + \mathcal{Y}_4$")
+
+plt.xlim(0,15)
+plt.ylim(0.2e-9,4.8e-9)
+plt.ylabel("Action")
+plt.xlabel("Myr")
+# plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+plt.legend(ncols=3, columnspacing=0.8)
+
+plt.tight_layout()
+plt.savefig("figs/e05-action-combinations-debug-poster.eps", bbox_inches="tight")
+# %%
+plt_lim = 100
+plt.figure(figsize=(3.5,3))
+
+i=0
+fmft_recon_y = np.sum([amp * np.exp(1j*freq*e05_sim['time']) for freq,amp in planet_fmft[action_angle_tools.psi_planet_list[i+action_angle_tools.N]].items()],axis=0)
+plt.plot(e05_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, psi_decoupled[i+action_angle_tools.N][plt_lim:] * np.conj(psi_decoupled[i+action_angle_tools.N])[plt_lim:], label=r'$\mathcal{Y}_1$')
+plt.plot(e05_sim['time'][plt_lim:]*action_angle_tools.TO_YEAR*1e-6, fmft_recon_y[plt_lim:] * np.conj(fmft_recon_y)[plt_lim:], c='grey', label='FMFT Recon')
+
+plt.xlabel("Myr")
+plt.ylabel("Inclination Action")
+plt.legend()
+
+plt.tight_layout()
+plt.savefig("figs/e05-fmft-recon-issue-poster.eps")
+# %%
 X, C_opts, found_combs = action_angle_tools.pca_combs(psi_decoupled)
 
 gamma_0 = np.array([1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0])

@@ -319,6 +319,68 @@ axs[1].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 plt.tight_layout()
 plt.savefig("figs/actions-predict-instability.eps")
 # %%
+# %%
+from matplotlib.patches import Rectangle, ConnectionPatch
+mag = lambda x: np.real(x * np.conj(x))
+mag_norm = lambda x: mag(x) - np.mean(mag(x))
+
+fig, axs = plt.subplots(1, 2, figsize=(7,2.5))
+
+short_time = e10_sim['time']*action_angle_tools.TO_YEAR*1e-6
+scalar = 1e9
+with plt.rc_context({"lines.linewidth":0.3}):
+    axs[0].plot(short_time,  mag_norm(psi[0]) * scalar, label=r"$X$", c='black')
+    # axs[0].plot(short_time,  mag_norm(psi_decoupled[0]) * scalar, label=r"$X_\text{decoupled}$")
+    axs[0].plot(short_time,  mag_norm(psi_cancelled[0]) * scalar, label=r"$X_\text{cancelled}$")
+    # axs[0].plot(short_time,  (C_2 - np.mean(C_2)) * scalar, label=r"$C_\text{2}$")
+    axs[0].plot(short_time,  (C_inc - np.mean(C_inc)) * scalar, label=r"$X_\text{PCA}$ [2]")
+axs[0].set_xlabel("Myr")
+axs[0].set_ylabel(r"Normalized Action $\propto e^2$")
+axs[0].set_xlim(0,30)
+axs[0].set_ylim(-2, 2.6)
+
+long_time = e10_sim_long['time']*action_angle_tools.TO_YEAR*1e-9
+long_time_myr = e10_sim_long['time']*action_angle_tools.TO_YEAR*1e-6
+fs = 1/np.gradient(long_time_myr).mean()
+ffreq = 0.02
+with plt.rc_context({"lines.linewidth":0.3}):
+    axs[1].plot(long_time, filter_action((mag(psi_long[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, ffreq, fs), label=r"$X$", c='black')
+    # axs[1].plot(long_time, filter_action((mag(psi_long_decoupled[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, ffreq, fs), label=r"$X_\text{decoup.}$")
+    axs[1].plot(long_time, filter_action((mag(psi_long_cancelled[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, ffreq, fs), label=r"$X_\text{cancelled}$")
+    # axs[1].plot(long_time,  (C_2_long - np.mean(C_2_long[:-100])) * scalar, label=r"$C_\text{2}^\perp$")
+    # axs[1].plot(long_time,  (C_inc_long - np.mean(C_inc_long[:-100])) * scalar, label=r"$C_\text{inc}$")
+    # axs[1].plot(long_time,  filter_action((C_2_long - np.mean(C_2_long[:-100])) * scalar, ffreq, fs), label=r"$C_\text{2}^\perp$")
+    axs[1].plot(long_time,  filter_action((C_inc_long - np.mean(C_inc_long[:-100])) * scalar, ffreq, fs), label=r"$X_\text{PCA}$ [2]")
+# plt.plot(long_time, e10_sim_long['e'][0], color='black', linewidth=0.1, label=r'Mercury $e$')
+axs[1].set_ylim(-4,12)
+axs[1].set_xlabel("Gyr")
+axs[1].add_patch(Rectangle((0, -2.5), 0.06, 5.5, lw=1, color="black", fill=False))
+axs[1].set_xlim(0,5)
+
+leg = axs[1].legend()
+# handles, labels = axs[1].get_legend_handles_labels()
+# leg = fig.legend(handles, labels, loc='upper center', ncols=3, bbox_to_anchor=(0.5, 1.1))
+for legobj in leg.legend_handles:
+    legobj.set_linewidth(1.0)
+
+conn = ConnectionPatch(
+    xyA=(30, 2.6), coordsA='data', axesA=axs[0],
+    xyB=(0.06, 3), coordsB='data', axesB=axs[1],
+    color='black',
+)
+axs[1].add_artist(conn)
+conn.set_in_layout(False) # remove from layout calculations
+conn = ConnectionPatch(
+    xyA=(30, -2), coordsA='data', axesA=axs[0],
+    xyB=(0.06, -2.5), coordsB='data', axesB=axs[1],
+    color='black',
+)
+axs[1].add_artist(conn)
+conn.set_in_layout(False) # remove from layout calculations
+
+plt.tight_layout()
+plt.savefig("figs/actions-predict-instability-poster.eps", bbox_inches='tight')
+# %%
 
 long_time = e10_sim_long['time']*action_angle_tools.TO_YEAR*1e-9
 long_time_myr = e10_sim_long['time']*action_angle_tools.TO_YEAR*1e-6
