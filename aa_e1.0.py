@@ -319,3 +319,45 @@ axs[1].legend(loc='center left', bbox_to_anchor=(1, 0.5))
 plt.tight_layout()
 plt.savefig("figs/actions-predict-instability.eps")
 # %%
+
+long_time = e10_sim_long['time']*action_angle_tools.TO_YEAR*1e-9
+long_time_myr = e10_sim_long['time']*action_angle_tools.TO_YEAR*1e-6
+fs = 1/np.gradient(long_time_myr).mean()
+ffreq = 0.05
+with plt.rc_context({"lines.linewidth":0.6, "font.size":18}):
+    fig, axs = plt.subplots(1, 1, figsize=(7,4))
+    axs.plot(long_time, filter_action((mag(psi_long[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, ffreq, fs), label=r"$X$", color='black')
+    # axs.plot(long_time, filter_action((mag(psi_long_decoupled[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, ffreq, fs), label=r"$X_\text{decoup.}$")
+    axs.plot(long_time, filter_action((mag(psi_long_cancelled[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, ffreq, fs), label=r"$X_\text{canc.}$")
+    axs.plot(long_time,  filter_action((C_2_long - np.mean(C_2_long[:-100])) * scalar, 0.005, fs), label=r"$C_\text{2}^\perp$", linewidth=1)
+    # axs.plot(long_time,  filter_action((C_inc_long - np.mean(C_inc_long[:-100])) * scalar, 0.005, fs), label=r"$C_\text{inc}$")
+    
+axs.set_ylabel(r"$\text{Eccentricity}^2$")
+axs.set_ylim(-4,12)
+axs.set_xlabel("Gyr")
+axs.add_patch(Rectangle((0, -2.5), 0.03, 6,facecolor="grey",lw=1, alpha=0.5))
+axs.set_xlim(0,5)
+
+axs.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+# %%
+%config InlineBackend.figure_format = 'retina'
+# %%
+with plt.rc_context({"font.size":20}):
+    plt.plot(long_time, e10_sim_long['e'][0], color='black', label=r'Mercury $e$')
+    plt.xlim(0,5)
+    plt.ylim(-0.1, 1)
+# %%
+fig, axs = plt.subplots(1, 2, figsize=(7,2.5))
+with plt.rc_context({"lines.linewidth":0.3}):
+    axs[0].plot(short_time,  mag_norm(psi[0]) * scalar, label=r"$e^2$", color='black')
+    # axs[0].plot(short_time,  (C_2 - np.mean(C_2)) * scalar)
+axs[0].set_ylabel(r"$\text{Eccentricity}^2$")
+axs[0].set_xlabel("Millions of Years")
+axs[0].set_xlim(0,30)
+
+axs[1].plot(long_time, (mag(psi_long[0]) - np.mean(mag(psi_long[0])[:-100])) * scalar, label=r"$e^2$", color='black', linewidth=0.1)
+# axs[1].plot(long_time, filter_action((C_2_long - np.mean(C_2_long[:-100])) * scalar, 0.005, fs), linewidth=1)
+axs[1].set_ylim(-4,12)
+axs[1].set_xlim(0,5)
+axs[1].set_xlabel("Billions of Years")
+# %%
